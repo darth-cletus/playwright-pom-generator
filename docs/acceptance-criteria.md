@@ -184,7 +184,7 @@ On Windows in headless Chromium, each 2,500-control run dispatched 500 CDP mouse
 | AC-004.59 Existing TypeScript tests | PASS | The original unit suite passes alongside the runtime tests. |
 | AC-004.60 POM-002 and POM-003 regressions | PASS | The baseline and final browser suites exercise the existing workflows. |
 | AC-004.61 Production extension build | PASS | Strict TypeScript checks and esbuild pass. |
-| AC-004.62 Hosted CI | NOT VERIFIED | Hosted run pending. |
+| AC-004.62 Hosted CI | PASS | The hosted workflow passed the TypeScript build and tests, Ruff, pytest, and the unpacked-extension suite. [GitHub Actions evidence](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46077816340) |
 | AC-004.63 Documentation | PASS | README, companion setup, architecture, roadmap, changelog, ADR, and this matrix are current. |
 | AC-004.64 Threat model | PASS | Architecture documents attacker boundaries, authentication, debugging constraints, and marker limitations. |
 | AC-004.65 Permissions and services | PASS | The existing optional HTTP host permission covers explicit loopback access. The runtime companion is local. |
