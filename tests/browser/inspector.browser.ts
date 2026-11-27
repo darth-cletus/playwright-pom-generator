@@ -262,6 +262,10 @@ it('keeps isolated overlay bounds aligned after scrolling and resizing', async (
     });
     await app.setViewportSize({width: 1000, height: 740});
     await expect.poll(boundsMatch).toBe(true);
+    await app.locator('dialog').evaluate((dialog: HTMLDialogElement) => dialog.showModal());
+    await app.getByText('Options', {exact: true}).hover();
+    await expect.poll(() => target().textContent()).toBe('p');
+    expect(await app.locator('dialog [data-pom-overlay]').count()).toBe(1);
   } finally {
     await cdp.detach();
   }
@@ -326,3 +330,15 @@ it('shows actionable guidance for unsupported browser pages', async () => {
   await clickPanel('Start inspection');
   await expect.poll(() => panel.getByText(/Open an HTTP or HTTPS page/).count()).toBe(1);
 });
+
+it('releases page listeners and overlay when the extension reloads', async () => {
+  await start();
+  const dental = app.getByTestId('dental-plans');
+  await dental.hover();
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(1);
+  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  await worker.evaluate(() => { setTimeout(() => chrome.runtime.reload(), 0); });
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(0);
+  await dental.click();
+  expect(Number(await app.locator('#actions').textContent())).toBeGreaterThan(0);
+}, 15_000);

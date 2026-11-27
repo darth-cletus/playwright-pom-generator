@@ -83,7 +83,7 @@ The browser tests load the production bundle as an unpacked extension in an isol
 | AC-003.22 Candidate details | PASS | Repeated role candidates show ambiguity and competing strategies in the panel. |
 | AC-003.23 Safeguards | PASS | Ambiguous selection blocks Python generation, and POM-002 wrong-target tests still pass. |
 | AC-003.24 Prior highlight | PASS | Shared highlight service handles both picked and scanned references. |
-| AC-003.25 Scroll and resize geometry | PASS | Chromium compares the shadow overlay and target rectangles before and after scroll and resize. |
+| AC-003.25 Scroll and resize geometry | PASS | Chromium compares the shadow overlay and target rectangles before and after scroll and resize and checks that the overlay follows a modal target. |
 | AC-003.26 Detached references | PASS | A cloned replacement leaves a visible stale row. |
 | AC-003.27 No rebinding | PASS | Replacement with the same HTML ID is assigned a new reference and row. |
 | AC-003.28 Dynamic nodes | PASS | A dynamically added button can be hovered and selected with Enter. |
@@ -91,24 +91,24 @@ The browser tests load the production bundle as an unpacked extension in an isol
 | AC-003.30 Stale messages | PASS | Foreign document IDs resolve as stale. The panel checks port ownership and document identity. |
 | AC-003.31 Unsupported pages | PASS | A browser internal page produces guidance to open a web page. |
 | AC-003.32 Resume normal interactions | PASS | The page action counter increases after stopping or closing the panel. |
-| AC-003.33 Resource cleanup | PASS | Overlay removal is observed after stop, Escape, reload, tab change, and panel closure. |
+| AC-003.33 Resource cleanup | PASS | Overlay removal is observed after stop, Escape, page and extension reload, tab change, and panel closure. |
 | AC-003.34 Valid Python | PASS | The downloaded inspector-generated source parses with the Python AST. |
 | AC-003.35 JSON export | PASS | Chromium downloads and decodes a model containing selected rows and overrides. |
 | AC-003.36 Static interactions | PASS | The static article gets a locator attribute with no interaction method. |
 | AC-003.37 Sensitive input values | PASS | A filled password and a hidden input value never appear in the password model export. Synthetic page clicks also cannot add rows. |
 | AC-003.38 Automatic scan | PASS | The original login fixture yields its five controls in the unpacked build. |
 | AC-003.39 POM-002 regressions | PASS | Existing locator, panel, and Python execution tests pass. |
-| AC-003.40 New coverage | PASS | Four model and protocol tests and seven unpacked-extension tests exercise the inspector. |
+| AC-003.40 New coverage | PASS | Four model and protocol tests and eight unpacked-extension tests exercise the inspector. |
 | AC-003.41 Existing tests | PASS | All 32 baseline tests pass. |
 | AC-003.42 Production build | PASS | TypeScript and esbuild pass. |
-| AC-003.43 CI | NOT VERIFIED | The workflow installs full Chromium and the Headless Shell. Hosted POM-003 result pending. |
+| AC-003.43 CI | PASS | The workflow installed both Chromium binaries, ran the test suites and build, and captured fixture screenshots. [Hosted POM-003 run](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46056052235) |
 | AC-003.44 Documentation | PASS | README, contributor guidance, changelog, architecture, current state, and this checklist describe the inspector. |
 | AC-003.45 Permissions and services | PASS | Production permissions are unchanged. Tests use a loopback fixture server. |
 | AC-003.46 Performance | PASS | The 2,500-control fixture records 500 Chromium pointer moves and a settled hover. |
 
 ### Performance measurements
 
-On Windows in headless Chromium, a local run with 2,500 controls dispatched 500 CDP mouse moves in 20 batches. The median batch completion was 4.9 ms and p95 was 8.6 ms. The final hover reached the panel in 342 ms, including the 160 ms debounce, locator computation, browser messaging, and test polling. Batch timing includes the automation transport. Pass `?large=1` on the inspector fixture URL to reproduce the large DOM. The suite prints measurements without imposing a timing threshold.
+On Windows in headless Chromium, each 2,500-control run dispatched 500 CDP mouse moves in 20 batches. In two runs, median batch times were 4.7–4.9 ms and p95 ranged from 8.6 to 63.7 ms. The final hover reached the panel in 342–344 ms, including the 160 ms debounce, locator computation, browser messaging, and test polling. Batch timing includes the automation transport. Pass `?large=1` on the inspector fixture URL to reproduce the large DOM. The suite prints measurements without imposing a timing threshold.
 
 ### Manual Chrome and Edge acceptance
 

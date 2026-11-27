@@ -83,6 +83,11 @@ export class Highlights {
   private draw = () => {
     this.frame = 0;
     let anchor: DOMRect | undefined;
+    const focused = this.boxes.get('target') ?? this.boxes.get('hover') ??
+      this.boxes.get('panel') ?? this.boxes.get('selected');
+    const scope = focused?.element.closest('dialog:modal,[popover]:popover-open');
+    const hostParent = scope ?? document.documentElement;
+    if (this.host && this.host.parentElement !== hostParent) hostParent.append(this.host);
     for (const [style, {element, box}] of this.boxes) {
       if (!element.isConnected) {
         box.remove();
@@ -91,7 +96,8 @@ export class Highlights {
       }
       const rect = element.getBoundingClientRect();
       const offscreen = rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth;
-      box.hidden = offscreen || !rect.width || !rect.height || getComputedStyle(element).visibility !== 'visible';
+      box.hidden = Boolean(scope && !scope.contains(element)) || offscreen || !rect.width || !rect.height ||
+        getComputedStyle(element).visibility !== 'visible';
       if (box.hidden) continue;
       if (style === 'hover' || style === 'target') anchor = rect;
       const geometry = `translate(${rect.left}px,${rect.top}px)`;
