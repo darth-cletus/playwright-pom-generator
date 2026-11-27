@@ -1,6 +1,7 @@
 import {selectedCandidate, type Locator} from './locator';
 import type {PageModel} from './model';
 import {identifier, reserved} from './python-names';
+import {currentEvidence, runtimeRejects, type RuntimePolicy} from './runtime';
 
 export {identifier} from './python-names';
 
@@ -16,7 +17,7 @@ export function pythonLocator(locator: Locator): string {
   }
 }
 
-export function generate(model: PageModel): string {
+export function generate(model: PageModel, policy: RuntimePolicy = 'browser'): string {
   const className = model.className.trim();
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(className) || reserved.has(className)) {
     throw Error('Invalid Python class name');
@@ -31,7 +32,15 @@ export function generate(model: PageModel): string {
   const rows = model.elements.filter(element => element.selected).map(element => {
     if (element.stale) throw Error(`Remove or deselect the detached element ${element.name}`);
     const candidate = selectedCandidate(element);
-    if (candidate?.validation.status !== 'unique-target') {
+    const evidence = currentEvidence(candidate?.runtime);
+    if (runtimeRejects(evidence)) {
+      throw Error(`Playwright found ${evidence?.status} for ${element.name}. Choose another locator or validate again.`);
+    }
+    if (policy !== 'browser' && evidence?.status !== 'unique-target' &&
+      !(policy === 'runtime' && evidence?.status === 'unique-unverified')) {
+      throw Error(`Validate the locator for ${element.name} under the selected runtime policy.`);
+    }
+    if (!candidate || (candidate.validation.status !== 'unique-target' && evidence?.status !== 'unique-target')) {
       throw Error(`Choose a locator that uniquely matches ${element.name}`);
     }
     return {name: unique(identifier(element.name)), action: element.action, locator: candidate.locator};

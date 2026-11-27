@@ -72,6 +72,7 @@ async function scan() {
           return highlight;
         };
       },
+      removeListener() {},
     }, onConnect: {addListener() {}}}}});
   });
   await page.addScriptTag({content});

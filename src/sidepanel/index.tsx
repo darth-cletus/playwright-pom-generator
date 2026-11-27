@@ -1,10 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {defaultSettings, parseSettings, type LocatorSettings} from '../core/locator';
+import {defaultSettings, parseSettings, selectedCandidate, type LocatorSettings} from '../core/locator';
 import {mergePage, serializePage, type ElementModel, type PageModel} from '../core/model';
 import {generate} from '../core/python';
 import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
+import {RuntimeControls, useRuntime} from './runtime';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect';
@@ -19,6 +20,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
+  const runtime = useRuntime(model, setModel, tab, settings?.playwrightTestAttribute);
   const selectedRow = useRef<HTMLElement>(null);
   const inspector = useInspector(model, (incoming, sourceTab) => {
     const id = incoming.elements[0]?.id;
@@ -57,6 +59,7 @@ function App() {
 
   async function saveSettings(next: LocatorSettings) {
     await chrome.storage.local.set({[settingsKey]: next});
+    runtime.invalidate();
     setSettings(next);
   }
 
@@ -64,7 +67,7 @@ function App() {
   let generationError = '';
   if (model) {
     try {
-      code = generate(model);
+      code = generate(model, runtime.policy);
     } catch (cause) {
       generationError = cause instanceof Error ? cause.message : String(cause);
     }
@@ -74,6 +77,7 @@ function App() {
     if (running.current || !settings) return;
     running.current = true;
     setBusy(true);
+    runtime.invalidate();
     setError('');
     setSiteAccess(null);
     try {
@@ -188,6 +192,7 @@ function App() {
   return <>
     <h1>Page Object Generator</h1>
     {settings && <Settings settings={settings} onSave={saveSettings}/>}
+    <RuntimeControls runtime={runtime} extensionId={chrome.runtime.id}/>
     <button disabled={!settings || busy || inspector.state === 'active' || inspector.state === 'starting'}
       onClick={() => void openPage('scan')}>Scan active page</button>
     <InspectorControls inspector={inspector} ready={!!settings && !busy} start={() => void openPage('inspect')}/>
@@ -207,6 +212,11 @@ function App() {
         <button onClick={() => remove()}>Remove all elements</button>
       </div>
       <p>{model.elements.filter(element => element.selected).length} selected / {model.elements.length} discovered</p>
+      {runtime.status?.connected && <button disabled={runtime.busy} onClick={() => void runtime.validate(
+        model.elements.flatMap(element => {
+          const candidate = selectedCandidate(element) ?? element.candidates[0];
+          return element.selected && candidate ? [{element, candidates: [candidate]}] : [];
+        }))}>Validate selected elements</button>}
       {model.elements.map((element, index) => <article key={element.id} ref={pick?.id === element.id ? selectedRow : undefined}>
         <label>
           <input type="checkbox" checked={element.selected} onChange={event => update(element.id, {selected: event.target.checked})}/>
@@ -214,7 +224,8 @@ function App() {
         </label>
         <input aria-label="Python element name" type="text" value={element.name}
           onChange={event => update(element.id, {name: event.target.value})}/>
-        <LocatorControls element={element} onChoice={choice => update(element.id, {choice})}/>
+        <LocatorControls element={element} onChoice={choice => update(element.id, {choice})}
+          onValidate={runtime.status?.connected && !runtime.busy ? candidates => void runtime.validate([{element, candidates}]) : undefined}/>
         {element.stale && <small className="error">Detached element. Inspect its replacement to add it.</small>}
         <div className="actions">
           <button disabled={element.stale} onClick={() => void highlight(element)}>Highlight</button>
