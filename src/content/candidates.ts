@@ -4,14 +4,14 @@ import {normalize} from './accessibility';
 import type {extractMetadata} from './metadata';
 import {attributeSelector, type LocatorValidator} from './validation';
 
-function structuralSelector(element: Element): string {
+function structuralSelector(element: Element, root?: Element): string {
   const parts: string[] = [];
-  for (let current: Element | null = element; current; current = current.parentElement) {
+  for (let current: Element | null = element; current && current !== root; current = current.parentElement) {
     const siblings = current.parentElement?.children;
     const index = siblings ? Array.prototype.indexOf.call(siblings, current) + 1 : 1;
     parts.unshift(`${CSS.escape(current.localName)}:nth-child(${index})`);
   }
-  return parts.join(' > ');
+  return (root ? ':scope > ' : '') + parts.join(' > ');
 }
 
 export function generateCandidates(
@@ -19,6 +19,7 @@ export function generateCandidates(
   metadata: ReturnType<typeof extractMetadata>,
   settings: LocatorSettings,
   validate: LocatorValidator,
+  root?: Element,
 ) {
   const proposals = new Map<string, Proposal>();
   function add(locator: Locator, basis: string, priority: Proposal['priority'], unstable?: string, order?: number) {
@@ -64,7 +65,7 @@ export function generateCandidates(
   const evaluate = (proposal: Proposal) => scoreCandidate(proposal, validate(proposal.locator, element));
   const candidates = rankCandidates(Array.from(proposals.values(), evaluate));
   if (!recommendedCandidate(candidates)) {
-    const locator: Locator = {strategy: 'css', selector: structuralSelector(element)};
+    const locator: Locator = {strategy: 'css', selector: structuralSelector(element, root)};
     candidates.push(evaluate({locator, basis: 'Structural fallback', priority: 'structural'}));
     rankCandidates(candidates);
   }

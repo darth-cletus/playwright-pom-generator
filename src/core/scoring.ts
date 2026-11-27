@@ -44,7 +44,7 @@ export function scoreCandidate(proposal: Proposal, validation: Validation, score
   if (priority === 'structural') warnings.push('Depends on DOM order and ancestry.');
   if (priority === 'combination') adjust(-2, 'Requires multiple attributes to stay stable.');
   if (locator.strategy !== 'css' && locator.strategy !== 'test-id') {
-    const text = locator.strategy === 'role' ? locator.name : locator.value;
+    const text = locator.strategy === 'role' ? locator.name : 'value' in locator ? locator.value : '';
     warnings.push('Exact text can change with copy or localization.');
     if (text.length > 60) adjust(-8, 'Long text is more likely to change.');
   }

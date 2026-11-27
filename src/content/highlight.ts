@@ -1,12 +1,13 @@
-type Style = 'hover' | 'target' | 'selected' | 'previous' | 'panel';
+type Style = 'hover' | 'target' | 'selected' | 'previous' | 'panel' | 'component';
 
 export class Highlights {
   private host?: HTMLElement;
   private root?: ShadowRoot;
-  private boxes = new Map<Style, {element: Element; box: HTMLElement}>();
+  private boxes = new Map<string, {style: Style; element: Element; box: HTMLElement}>();
   private tooltip?: HTMLElement;
   private frame = 0;
   private timeout = 0;
+  private componentTimeout = 0;
 
   private ensureRoot() {
     if (this.root) return this.root;
@@ -21,21 +22,22 @@ export class Highlights {
     return root;
   }
 
-  set(style: Style, element?: Element) {
-    const old = this.boxes.get(style);
+  set(style: Style, element?: Element, key: string = style) {
+    const old = this.boxes.get(key);
     if (old?.element === element) return;
     old?.box.remove();
-    this.boxes.delete(style);
+    this.boxes.delete(key);
     if (!element) return;
     const box = document.createElement('div');
     box.dataset.pomState = style;
     const borders: Record<Style, string> = {
       hover: '2px dashed #0284c7', target: '3px double #2563eb', selected: '3px solid #15803d',
       previous: '2px dotted #166534', panel: '4px solid #a21caf',
+      component: '4px dashed #9a3412',
     };
     box.style.cssText = `position:fixed;pointer-events:none;box-sizing:border-box;border:${borders[style]};box-shadow:0 0 0 1px #fff9`;
     this.ensureRoot().append(box);
-    this.boxes.set(style, {element, box});
+    this.boxes.set(key, {style, element, box});
     if (!this.frame) this.frame = requestAnimationFrame(this.draw);
   }
 
@@ -58,6 +60,19 @@ export class Highlights {
     }, 1800);
   }
 
+  flashComponents(elements: Element[]) {
+    const remove = () => {
+      for (const [key, entry] of this.boxes) if (entry.style === 'component') this.set('component', undefined, key);
+    };
+    clearTimeout(this.componentTimeout);
+    remove();
+    elements.slice(0, 12).forEach((element, index) => this.set('component', element, `component-${index}`));
+    this.componentTimeout = window.setTimeout(() => {
+      remove();
+      this.releaseIfEmpty();
+    }, 1800);
+  }
+
   clearTarget() {
     this.set('hover');
     this.set('target');
@@ -68,6 +83,7 @@ export class Highlights {
 
   clear() {
     clearTimeout(this.timeout);
+    clearTimeout(this.componentTimeout);
     cancelAnimationFrame(this.frame);
     this.frame = 0;
     this.boxes.clear();
@@ -88,10 +104,10 @@ export class Highlights {
     const scope = focused?.element.closest('dialog:modal,[popover]:popover-open');
     const hostParent = scope ?? document.documentElement;
     if (this.host && this.host.parentElement !== hostParent) hostParent.append(this.host);
-    for (const [style, {element, box}] of this.boxes) {
+    for (const [key, {style, element, box}] of this.boxes) {
       if (!element.isConnected) {
         box.remove();
-        this.boxes.delete(style);
+        this.boxes.delete(key);
         continue;
       }
       const rect = element.getBoundingClientRect();

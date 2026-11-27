@@ -2,10 +2,12 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {defaultSettings, parseSettings, selectedCandidate, type LocatorSettings} from '../core/locator';
 import {mergePage, serializePage, type ElementModel, type PageModel} from '../core/model';
-import {generate} from '../core/python';
+import {generate, generatePackage} from '../core/python';
+import {pythonPackageZip} from '../core/python-package';
 import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
 import {RuntimeControls, useRuntime} from './runtime';
+import {ComponentsPanel} from './components';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect';
@@ -20,6 +22,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
+  const [file, setFile] = useState('');
   const runtime = useRuntime(model, setModel, tab, settings?.playwrightTestAttribute);
   const selectedRow = useRef<HTMLElement>(null);
   const inspector = useInspector(model, (incoming, sourceTab) => {
@@ -42,6 +45,9 @@ function App() {
     function invalidate(tabId: number, change: chrome.tabs.TabChangeInfo) {
       if (tabId === tab && change.status === 'loading') setModel(current => current && ({
         ...current, elements: current.elements.map(element => ({...element, stale: true})),
+        components: current.components?.map(definition => ({
+          ...definition, instances: definition.instances.map(instance => ({...instance, root: {...instance.root, stale: true}})),
+        })),
       }));
     }
     chrome.tabs.onUpdated?.addListener(invalidate);
@@ -65,9 +71,11 @@ function App() {
 
   let code = '';
   let generationError = '';
+  let files: Record<string, string> = {};
   if (model) {
     try {
       code = generate(model, runtime.policy);
+      if (file && model.components?.length) files = generatePackage(model, runtime.policy);
     } catch (cause) {
       generationError = cause instanceof Error ? cause.message : String(cause);
     }
@@ -202,6 +210,12 @@ function App() {
       <small role="status">{pick.duplicate ? 'Element already in collection.' : 'Element added to collection.'}</small>}
     {model && <>
       <small>{model.url}</small>
+      {settings && tab !== null && <ComponentsPanel model={model} settings={settings} setModel={setModel}
+        request={(type, value) => chrome.tabs.sendMessage(tab, {type, documentKey: model.documentKey, ...value}, {frameId: 0})}
+        highlight={element => void highlight(element)}
+        versionWarning={runtime.status?.connected && !runtime.status.strategies?.includes('chain')}
+        validate={runtime.status?.connected && runtime.status.strategies?.includes('chain') && !runtime.busy
+          ? jobs => void runtime.validate(jobs) : undefined}/>}
       <label>Python class
         <input type="text" value={model.className} onChange={event => setModel({...model, className: event.target.value})}/>
       </label>
@@ -238,18 +252,39 @@ function App() {
       </article>)}
       <h2>Python preview</h2>
       {generationError && <p className="error">{generationError}</p>}
-      <textarea readOnly value={code}/>
+      {!!model.components?.length && <select aria-label="Python output file" value={file} onFocus={() => {
+        if (!file) setFile('single');
+      }} onChange={event => setFile(event.target.value)}>
+        <option value="single">Single Python file</option>
+        {Object.keys(files).map(path => <option key={path} value={path}>{path}</option>)}
+      </select>}
+      <textarea readOnly value={files[file] ?? code}/>
       <div className="actions">
         <button disabled={!code} onClick={() => save(model.className.trim() + '.py', code)}>Export Python</button>
-        <button disabled={!code} onClick={() => navigator.clipboard.writeText(code).catch(cause => setError(String(cause)))}>Copy Python</button>
-        <button onClick={() => save('page-model.json', serializePage(model), 'application/json')}>Export JSON</button>
+        <button disabled={!code} onClick={() => navigator.clipboard.writeText(files[file] ?? code)
+          .catch(cause => setError(String(cause)))}>Copy Python</button>
+        <button onClick={() => {
+          try {save('page-model.json', serializePage(model), 'application/json');}
+          catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
+        }}>Export JSON</button>
+        {!!model.components?.length && <button disabled={!code} onClick={() => {
+          try {
+            download('generated-python.zip', pythonPackageZip(generatePackage(model, runtime.policy)));
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        }}>Export Python package</button>}
       </div>
     </>}
   </>;
 }
 
 function save(name: string, body: string, type = 'text/plain') {
-  const url = URL.createObjectURL(new Blob([body], {type}));
+  download(name, new Blob([body], {type}));
+}
+
+function download(name: string, body: Blob) {
+  const url = URL.createObjectURL(body);
   const link = document.createElement('a');
   link.href = url;
   link.download = name;

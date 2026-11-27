@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {build} from 'esbuild';
-import {chromium, selectors, type Browser, type Page} from 'playwright';
+import {chromium, selectors, type Browser, type Page, type Locator as PlaywrightLocator} from 'playwright';
 import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import {defaultSettings, type Locator, type LocatorSettings} from '../../src/core/locator';
 import {generate} from '../../src/core/python';
@@ -79,17 +79,21 @@ async function scan() {
   return page.evaluate(settings => window.scanFixture(settings), defaultSettings);
 }
 
-function runtimeLocator(locator: Locator) {
+function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator = page): PlaywrightLocator {
   const exact = {exact: true};
   switch (locator.strategy) {
-    case 'css': return page.locator(locator.selector);
-    case 'test-id': return page.getByTestId(locator.value);
-    case 'role': return page.getByRole(locator.role as Parameters<Page['getByRole']>[0], {...exact, name: locator.name});
-    case 'label': return page.getByLabel(locator.value, exact);
-    case 'placeholder': return page.getByPlaceholder(locator.value, exact);
-    case 'text': return page.getByText(locator.value, exact);
-    case 'alt': return page.getByAltText(locator.value, exact);
-    case 'title': return page.getByTitle(locator.value, exact);
+    case 'css': return scope.locator(locator.selector);
+    case 'test-id': return scope.getByTestId(locator.value);
+    case 'role': return scope.getByRole(locator.role as Parameters<Page['getByRole']>[0], {...exact, name: locator.name});
+    case 'label': return scope.getByLabel(locator.value, exact);
+    case 'placeholder': return scope.getByPlaceholder(locator.value, exact);
+    case 'text': return scope.getByText(locator.value, exact);
+    case 'alt': return scope.getByAltText(locator.value, exact);
+    case 'title': return scope.getByTitle(locator.value, exact);
+    case 'chain': return runtimeLocator(locator.child, runtimeLocator(locator.root, scope));
+    case 'filter': return runtimeLocator(locator.base, scope).filter(locator.has
+      ? {has: runtimeLocator(locator.has)} : {hasText: locator.text});
+    case 'index': return runtimeLocator(locator.base, scope).nth(locator.index);
   }
 }
 

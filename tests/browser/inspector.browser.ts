@@ -4,6 +4,7 @@ import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {createServer, type Server} from 'node:http';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {chromium, type BrowserContext, type Page} from 'playwright';
 import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import type {PageModel} from '../../src/core/model';
@@ -36,9 +37,10 @@ async function freePort() {
 beforeAll(async () => {
   const fixture = await readFile(new URL('../../fixtures/inspector.html', import.meta.url));
   const login = await readFile(new URL('../../fixtures/login.html', import.meta.url));
+  const components = await readFile(new URL('../../fixtures/components.html', import.meta.url));
   server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
-    response.end(request.url === '/login' ? login : fixture);
+    response.end(request.url === '/login' ? login : request.url?.startsWith('/components') ? components : fixture);
   });
   await new Promise<void>(resolveListening => server.listen(0, '127.0.0.1', resolveListening));
   const address = server.address();
@@ -337,6 +339,78 @@ it('rejects invalid commands and makes repeated starts idempotent on one documen
   expect(states).toEqual(['active', 'stale', 'error', 'stopped']);
 }, 15_000);
 
+it('discovers, scopes and exports reusable components from the unpacked extension', async () => {
+  await app.goto(fixtureUrl + '/components');
+  await clickPanel('Scan active page');
+  await expect.poll(() => field().count(), {timeout: 10_000}).toBeGreaterThan(3);
+  await app.evaluate(() => {
+    const wrapper = document.createElement('section');
+    for (let i = 0; i < 650; i++) {
+      const item = document.createElement('div');
+      item.className = 'fixture-row';
+      const button = document.createElement('button');
+      button.textContent = 'Fixture ' + i;
+      item.append(button);
+      wrapper.append(item);
+    }
+    document.body.append(wrapper);
+  });
+  await panel.getByText('Reusable components (0)', {exact: true}).click();
+  const started = performance.now();
+  await clickPanel('Discover components');
+  const suggestion = panel.locator('article').filter({hasText: 'Dental, Vision, Life'});
+  await expect.poll(() => suggestion.count(), {timeout: 10_000}).toBe(1);
+  console.info(`Component discovery on the 650-extra-boundary fixture reached the side panel in ${Math.round(performance.now() - started)} ms.`);
+  expect(await suggestion.getByText(/3 instances/).count()).toBe(1);
+  await suggestion.getByRole('button', {name: 'Accept component'}).click();
+  await panel.getByText('Article component · definition', {exact: true}).click();
+  await panel.getByLabel('Component Python class').fill('SpecialtyPlanCard');
+  await panel.getByLabel('Python class', {exact: true}).fill('PlansPage');
+  await clickPanel('Move matching page elements into component');
+  await app.bringToFront();
+  await start();
+  for (const id of ['dental-card', 'vision-card', 'life-card']) {
+    await app.getByTestId(id).locator('.status').click({position: {x: 1, y: 1}});
+  }
+  await clickPanel('Stop inspection');
+  const snapshot: PageModel = JSON.parse(await download('Export JSON'));
+  const statusRows = snapshot.elements.filter(element => element.tag === 'div' && element.label === 'Available');
+  expect(statusRows).toHaveLength(3);
+  const selectRoot = panel.getByLabel('Component root', {exact: true});
+  await selectRoot.selectOption(statusRows[0].id);
+  await clickPanel('Define component root');
+  const childSummary = panel.getByText('Div component · definition', {exact: true});
+  await childSummary.click();
+  const childDefinition = childSummary.locator('..');
+  await childDefinition.getByLabel('Component Python class').fill('StatusBadge');
+  await childDefinition.getByLabel('Expose instances on page').uncheck();
+  for (const [index, row] of statusRows.slice(1).entries()) {
+    await selectRoot.selectOption(row.id);
+    await childDefinition.getByRole('button', {name: 'Add selected root as instance'}).click();
+    await expect.poll(() => childDefinition.getByText(`Instances (${index + 2})`, {exact: true}).count()).toBe(1);
+  }
+  const parentDefinition = panel.getByText('Article component · definition', {exact: true}).locator('..');
+  await parentDefinition.getByText('Nested components (0)', {exact: true}).click();
+  await parentDefinition.getByLabel('Nested definition', {exact: true}).selectOption({label: 'Div component'});
+  await parentDefinition.getByRole('button', {name: 'Add nested instance'}).click();
+  await expect.poll(() => parentDefinition.getByText('Nested components (1)', {exact: true}).count()).toBe(1);
+  await clickPanel('Clear all');
+  expect(await panel.locator('textarea').inputValue()).toContain('root.get_by_role("button", name="See plans", exact=True)');
+  const output = panel.waitForEvent('download');
+  await clickPanel('Export Python package');
+  const archive = await (await output).path();
+  if (!archive) throw Error('Missing generated archive.');
+  const result = spawnSync(python, [
+    fileURLToPath(new URL('./run_component_package.py', import.meta.url)), archive,
+    fileURLToPath(new URL('../../fixtures/components.html', import.meta.url)),
+  ], {encoding: 'utf8'});
+  expect(result.status, result.stderr || result.error?.message).toBe(0);
+  const exported: PageModel = JSON.parse(await download('Export JSON'));
+  expect(exported.schemaVersion).toBe(2);
+  expect(exported.components?.[0].instances).toHaveLength(3);
+  expect(exported.components?.[0].children).toHaveLength(1);
+}, 65_000);
+
 it('shows actionable guidance for unsupported browser pages', async () => {
   await app.goto('about:blank');
   await app.bringToFront();
@@ -415,11 +489,28 @@ it('pairs the actual extension with Python and validates selected locator eviden
     await clickPanel('Scan active page');
     await expect.poll(() => field().count()).toBeGreaterThan(1);
     expect(await app.getByTestId('dental-plans').count()).toBe(1);
+    await app.goto(fixtureUrl + '/components');
+    await clickPanel('Scan active page');
+    await expect.poll(() => field().count()).toBeGreaterThan(3);
+    await clickPanel('Connect browser');
+    await expect.poll(() => panel.getByText(/Browser connected/).count()).toBe(1);
+    await panel.getByText('Reusable components (0)', {exact: true}).click();
+    await clickPanel('Discover components');
+    const component = panel.locator('article').filter({hasText: 'Dental, Vision, Life'});
+    await component.getByRole('button', {name: 'Accept component'}).click();
+    await panel.getByText('Article component · definition', {exact: true}).click();
+    await clickPanel('Validate component with Playwright');
+    await panel.getByText('Playwright component evidence', {exact: true}).click({timeout: 12_000});
+    await expect.poll(() => panel.getByText(/see_plans_button.*unique-target.*root 1, confirmed/).count(),
+      {timeout: 12_000}).toBe(3);
+    if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+      await panel.screenshot({path: join(process.env.POM_INSPECTOR_SCREENSHOTS, 'components-runtime.png')});
+    }
   } finally {
     service.kill();
     await exited;
   }
-}, 40_000);
+}, 60_000);
 
 it('releases page listeners and overlay when the extension reloads', async () => {
   await start();

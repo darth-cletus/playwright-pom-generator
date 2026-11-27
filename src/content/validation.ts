@@ -17,12 +17,14 @@ export function classifyMatches(matches: readonly Element[], target: Element, me
   };
 }
 
-export function createDomValidator(document: Document, text = new WeakMap<Element, string>()): LocatorValidator {
-  const queryCache = new Map<string, Element[]>();
-  let elements: Element[] | undefined;
-  const indexes = new Map<string, Map<string, Element[]>>();
+export function createDomMatcher(document: Document, text = new WeakMap<Element, string>()) {
+  const caches = new WeakMap<Document | Element, Map<string, Element[]>>();
+  const elementsByScope = new WeakMap<Document | Element, Element[]>();
+  const indexesByScope = new WeakMap<Document | Element, Map<string, Map<string, Element[]>>>();
 
-  function semanticIndex(strategy: string): Map<string, Element[]> {
+  function semanticIndex(strategy: string, scope: Document | Element): Map<string, Element[]> {
+    let indexes = indexesByScope.get(scope);
+    if (!indexes) {indexes = new Map(); indexesByScope.set(scope, indexes);}
     const cached = indexes.get(strategy);
     if (cached) return cached;
     const index = new Map<string, Element[]>();
@@ -31,7 +33,11 @@ export function createDomValidator(document: Document, text = new WeakMap<Elemen
       if (matches) matches.push(element);
       else index.set(key, [element]);
     }
-    elements ??= Array.from(document.querySelectorAll('*'));
+    let elements = elementsByScope.get(scope);
+    if (!elements) {
+      elements = Array.from(scope.querySelectorAll('*'));
+      elementsByScope.set(scope, elements);
+    }
     for (const element of elements) {
       switch (strategy) {
         case 'role': {
@@ -55,35 +61,59 @@ export function createDomValidator(document: Document, text = new WeakMap<Elemen
     return index;
   }
 
-  return (locator, target) => {
-    const method = locator.strategy === 'css' ? 'dom-css' : 'semantic-approximation';
-    try {
+  function match(locator: Locator, scope: Document | Element = document): Element[] {
+      let queryCache = caches.get(scope);
+      if (!queryCache) {queryCache = new Map(); caches.set(scope, queryCache);}
       const key = locatorKey(locator);
       let matches = queryCache.get(key);
       if (!matches) {
         switch (locator.strategy) {
           case 'css':
-            matches = Array.from(document.querySelectorAll(locator.selector));
+            matches = Array.from(scope.querySelectorAll(locator.selector));
+            break;
+          case 'chain': {
+            const roots = match(locator.root, scope);
+            matches = roots.length === 1 ? match(locator.child, roots[0]) : [];
+            break;
+          }
+          case 'filter':
+            matches = match(locator.base, scope).filter(element => locator.has
+              ? match(locator.has, element).length > 0
+              : normalize(pageText(element, text)).toLowerCase().includes(normalize(locator.text ?? '').toLowerCase()));
+            break;
+          case 'index':
+            matches = match(locator.base, scope).slice(locator.index, locator.index + 1);
             break;
           case 'test-id':
-            matches = Array.from(document.querySelectorAll(attributeSelector(locator.attribute, locator.value)));
+            matches = Array.from(scope.querySelectorAll(attributeSelector(locator.attribute, locator.value)));
             break;
           case 'role':
-            matches = semanticIndex('role').get(JSON.stringify([locator.role, locator.name])) ?? [];
+            matches = semanticIndex('role', scope).get(JSON.stringify([locator.role, locator.name])) ?? [];
             break;
           case 'label':
           case 'text':
-            matches = semanticIndex(locator.strategy).get(locator.value) ?? [];
+            matches = semanticIndex(locator.strategy, scope).get(locator.value) ?? [];
             break;
           default: {
             const attribute = locator.strategy === 'alt' ? 'alt' : locator.strategy;
-            matches = Array.from(document.querySelectorAll(`[${attribute}]`)).filter(
+            matches = Array.from(scope.querySelectorAll(`[${attribute}]`)).filter(
               element => normalize(element.getAttribute(attribute) ?? '') === locator.value);
           }
         }
+        if (scope !== document) matches = matches.filter(element => element !== scope && scope.contains(element));
         queryCache.set(key, matches);
       }
-      return classifyMatches(matches, target, method);
+      return matches;
+  }
+  return match;
+}
+
+export function createDomValidator(document: Document, text = new WeakMap<Element, string>(), scope?: Element): LocatorValidator {
+  const match = createDomMatcher(document, text);
+  return (locator, target) => {
+    const method = locator.strategy === 'css' ? 'dom-css' : 'semantic-approximation';
+    try {
+      return classifyMatches(match(locator, scope), target, method);
     } catch {
       return {method, status: 'error'};
     }

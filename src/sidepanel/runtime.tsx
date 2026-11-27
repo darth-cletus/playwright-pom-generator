@@ -4,7 +4,12 @@ import {archiveValidation, type ElementModel, type PageModel} from '../core/mode
 import {evidenceLifetime, type CompanionStatus, type Correlation, type RuntimeEvidence, type RuntimePolicy, type Trial} from '../core/runtime';
 import {readResults, readStatus, request, type Pairing} from './runtime-client';
 
-type Job = {element: ElementModel; candidates: Candidate[]};
+export type RuntimeJob = {
+  element: ElementModel;
+  candidates: Candidate[];
+  scopeId?: string;
+  apply?: (model: PageModel, evidence: RuntimeEvidence[]) => PageModel;
+};
 type Batch = {controller: AbortController; requestId?: string};
 
 export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateAction<PageModel | null>>,
@@ -21,7 +26,8 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
   const pairing = useRef<Pairing | undefined>(undefined);
   const batch = useRef<Batch | undefined>(undefined);
   const hasEvidence = !!model?.elements.some(element =>
-    element.candidates.some(candidate => candidate.runtime?.freshness === 'current'));
+    element.candidates.some(candidate => candidate.runtime?.freshness === 'current')) ||
+    !!model?.components?.some(definition => definition.runtime?.some(report => report.evidence.freshness === 'current'));
 
   function cancel() {
     const active = batch.current;
@@ -92,10 +98,15 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
   useEffect(() => {
     const next = model?.elements.flatMap(element => element.candidates.flatMap(candidate =>
       candidate.runtime?.freshness === 'current' ? [candidate.runtime.expiresAt] : [])) ?? [];
+    next.push(...(model?.components?.flatMap(definition => definition.runtime?.flatMap(report =>
+      report.evidence.freshness === 'current' ? [report.evidence.expiresAt] : []) ?? []) ?? []));
     if (!next.length) return;
     const timer = window.setTimeout(() => {
       setModel(current => current && ({
-        ...current, elements: current.elements.map(element => ({
+        ...current, components: current.components?.map(definition => ({
+          ...definition, runtime: definition.runtime?.map(report => report.evidence.freshness === 'current' &&
+            report.evidence.expiresAt <= Date.now() ? {...report, evidence: {...report.evidence, freshness: 'historical'}} : report),
+        })), elements: current.elements.map(element => ({
           ...element, candidates: element.candidates.map(candidate =>
             candidate.runtime?.freshness === 'current' && candidate.runtime.expiresAt <= Date.now()
               ? {...candidate, runtime: {...candidate.runtime, freshness: 'historical'}} : candidate),
@@ -136,7 +147,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
     }
   }
 
-  async function validate(jobs: Job[]) {
+  async function validate(jobs: RuntimeJob[]) {
     const documentKey = model?.documentKey;
     const browserId = status?.browserId;
     const config = pairing.current;
@@ -158,6 +169,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
           if (current?.id !== tab) throw Error('Switch to the inspected tab before validating.');
           marker = await chrome.tabs.sendMessage(tab, {
             type: 'POM_RUNTIME_MARK', documentKey, referenceId: confirmTarget ? job.element.referenceId : undefined,
+            scopeId: job.scopeId,
           }, {frameId: 0}) ?? undefined;
           if (!marker) throw Error('The document or element is no longer available. Scan or inspect it again.');
           if (signal.aborted) break;
@@ -177,17 +189,20 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
           if (unchanged !== true) throw Error('The document or element changed during validation. Retry on the intended target.');
           setModel(latest => {
             if (signal.aborted || latest?.documentKey !== documentKey) return latest;
+            const evidence = candidates.map((candidate, index): RuntimeEvidence => ({
+              ...results[index], requestId, browserId, documentKey,
+              candidateId: candidate.id, elementId: job.element.id,
+              testIdAttribute: candidate.locator.strategy === 'test-id' ? candidate.locator.attribute : testIdAttribute,
+              expiresAt: Date.now() + evidenceLifetime, freshness: 'current',
+            }));
+            if (job.apply) return job.apply(latest, evidence);
             return {...latest, elements: latest.elements.map(element => {
               if (element.id !== job.element.id || element.referenceId !== job.element.referenceId || element.stale) return element;
               return {...element, candidates: element.candidates.map(candidate => {
                 const index = candidates.findIndex(prior => prior.id === candidate.id &&
                   locatorKey(prior.locator) === locatorKey(candidate.locator));
                 if (index < 0) return candidate;
-                const runtime: RuntimeEvidence = {...results[index], requestId, browserId, documentKey,
-                  candidateId: candidate.id, elementId: element.id,
-                  testIdAttribute: candidate.locator.strategy === 'test-id' ? candidate.locator.attribute : testIdAttribute,
-                  expiresAt: Date.now() + evidenceLifetime, freshness: 'current'};
-                return {...candidate, runtime};
+                return {...candidate, runtime: evidence[index]};
               })};
             })};
           });

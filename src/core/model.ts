@@ -1,5 +1,6 @@
 import type {Candidate} from './locator';
 import {currentEvidence} from './runtime';
+import {modelSchemaVersion, validateComponentGraph, type ComponentDefinition} from './components';
 
 export type Action = 'click' | 'fill' | 'check' | 'select' | 'read' | 'assert';
 
@@ -21,6 +22,8 @@ export interface PageModel {
   className: string;
   elements: ElementModel[];
   documentKey?: string;
+  components?: ComponentDefinition[];
+  schemaVersion?: number;
 }
 
 export function mergePage(current: PageModel | null, incoming: PageModel): PageModel {
@@ -41,18 +44,31 @@ export function mergePage(current: PageModel | null, incoming: PageModel): PageM
 }
 
 export function serializePage(model: PageModel): string {
+  if (model.schemaVersion !== undefined && model.schemaVersion !== 1 && model.schemaVersion !== modelSchemaVersion) {
+    throw Error('Unsupported page object schema version.');
+  }
+  if (model.components?.length) validateComponentGraph(model.components, model.className.trim());
   const elements = model.elements.map(element => ({
     ...element,
     candidates: element.candidates.map(candidate => candidate.runtime && (element.stale || !currentEvidence(candidate.runtime))
       ? {...candidate, runtime: {...candidate.runtime, freshness: 'historical'}}
       : candidate),
   }));
-  return JSON.stringify({...model, elements}, null, 2);
+  const components = model.components?.map(definition => ({
+    ...definition, runtime: definition.runtime?.map(report => !currentEvidence(report.evidence)
+      ? {...report, evidence: {...report.evidence, freshness: 'historical'}} : report),
+  }));
+  return JSON.stringify({...model, ...(components?.length ? {schemaVersion: modelSchemaVersion, components} : {}), elements}, null, 2);
 }
 
 export function archiveValidation(model: PageModel | null): PageModel | null {
-  if (!model?.elements.some(element => element.candidates.some(candidate => currentEvidence(candidate.runtime)))) return model;
-  return {...model, elements: model.elements.map(element => ({
+  if (!model || (!model.elements.some(element => element.candidates.some(candidate => currentEvidence(candidate.runtime))) &&
+    !model.components?.some(definition => definition.runtime?.some(report => currentEvidence(report.evidence))))) return model;
+  return {...model, components: model.components?.map(definition => ({
+    ...definition, runtime: definition.runtime?.map(report => ({
+      ...report, evidence: {...report.evidence, freshness: 'historical'},
+    })),
+  })), elements: model.elements.map(element => ({
     ...element, candidates: element.candidates.map(candidate => candidate.runtime?.freshness === 'current'
       ? {...candidate, runtime: {...candidate.runtime, freshness: 'historical'}}
       : candidate),

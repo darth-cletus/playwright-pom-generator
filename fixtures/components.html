@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Specialty insurance plans</title>
+<style>
+  body { font: 16px system-ui; margin: 24px; }
+  .plans { display: flex; gap: 16px; flex-wrap: wrap; }
+  .plan { padding: 16px; border: 1px solid #888; width: 175px; }
+  .status { padding: 4px; }
+  button { padding: 8px; }
+</style>
+<main>
+  <h1>Specialty insurance plans</h1>
+  <section class="plans" aria-label="Specialty plans">
+    <article class="plan" data-slot="plan" data-testid="dental-card">
+      <h2>Dental</h2><p>Dental coverage</p>
+      <div class="status" data-component="status"><span role="status">Available</span></div>
+      <button type="button" data-testid="dental-plans">See plans</button>
+      <span data-component-member="promotion" class="promotion">Featured</span>
+    </article>
+    <article class="plan" data-slot="plan" data-testid="vision-card">
+      <h2>Vision</h2><p>Vision coverage</p>
+      <div class="status" data-component="status"><span role="status">Available</span></div>
+      <button type="button" data-testid="vision-plans">See plans</button>
+    </article>
+    <article class="plan" data-slot="plan" data-testid="life-card">
+      <h2>Life</h2><p>Life coverage</p>
+      <div class="status" data-component="status"><span role="status">Available</span></div>
+      <button type="button" data-testid="life-plans">See plans</button>
+    </article>
+    <article class="notice" data-slot="notice">
+      <h2>Need advice?</h2><p>Request a consultation</p><button type="button">Contact us</button>
+    </article>
+  </section>
+  <p id="choice" role="status">None</p>
+  <table><tbody>
+    <tr><td>Plan A</td><td><button type="button">Details</button></td></tr>
+    <tr><td>Plan B</td><td><button type="button">Details</button></td></tr>
+  </tbody></table>
+</main>
+<script>
+  for (const card of document.querySelectorAll('[data-slot="plan"]')) {
+    card.querySelector('button').addEventListener('click', () => {
+      document.getElementById('choice').textContent = card.querySelector('h2').textContent;
+    });
+  }
+  if (new URLSearchParams(location.search).has('large')) {
+    const container = document.createElement('section');
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < 650; i++) {
+      const row = document.createElement('div');
+      row.className = 'fixture-row';
+      const button = document.createElement('button');
+      button.textContent = 'Fixture ' + i;
+      row.append(button);
+      fragment.append(row);
+    }
+    container.append(fragment);
+    document.body.append(container);
+  }
+</script>
+</html>

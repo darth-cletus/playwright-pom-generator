@@ -30,7 +30,8 @@ export function readStatus(data: Record<string, unknown>): CompanionStatus {
   if (typeof connected !== 'boolean' || (browserId !== null && typeof browserId !== 'string') ||
     typeof serviceVersion !== 'string' || typeof pythonVersion !== 'string' || typeof playwrightVersion !== 'string' ||
     (browserVersion !== null && typeof browserVersion !== 'string')) throw Error('Invalid companion status response.');
-  return {connected, browserId, serviceVersion, pythonVersion, playwrightVersion, browserVersion};
+  const strategies = Array.isArray(data.strategies) ? data.strategies.filter((value): value is string => typeof value === 'string') : undefined;
+  return {connected, browserId, serviceVersion, pythonVersion, playwrightVersion, browserVersion, strategies};
 }
 
 export function readResults(data: Record<string, unknown>, expected: {requestId: string; browserId: string;
@@ -51,6 +52,10 @@ export function readResults(data: Record<string, unknown>, expected: {requestId:
     const result: RuntimeResult = {method: 'playwright', strategy, status: value.status as RuntimeResult['status'],
       identity: value.identity as RuntimeResult['identity'], timestamp: value.timestamp, durationMs: value.durationMs};
     if (typeof value.count === 'number') result.count = value.count;
+    if (typeof value.rootCount === 'number' && Number.isInteger(value.rootCount) && value.rootCount >= 0) result.rootCount = value.rootCount;
+    if (value.rootIdentity === 'confirmed' || value.rootIdentity === 'wrong' || value.rootIdentity === 'unverified') {
+      result.rootIdentity = value.rootIdentity;
+    }
     const cardinality = {'unique-target': [1, 'confirmed'], 'unique-unverified': [1, 'unverified'],
       'wrong-target': [1, 'wrong'], 'no-match': [0, 'unverified']} as const;
     const required = cardinality[result.status as keyof typeof cardinality];

@@ -106,14 +106,48 @@ def test_real_python_playwright_cdp_identity_states_and_trials(tmp_path):
                     ("no-match", 0, "unverified"),
                 ]
                 assert first[1]["durationMs"] >= 0 and first[1]["timestamp"]
+                await page.locator('[data-testid="dental-card"]').evaluate(
+                    "(node, [key, nonce]) => node.setAttribute(key, nonce)",
+                    [marker["attribute"] + "-root", marker["nonce"]],
+                )
+                marker["root"] = True
+                parent = {
+                    "strategy": "filter",
+                    "base": css("article.card"),
+                    "has": {"strategy": "role", "role": "heading", "name": "Dental"},
+                }
+                selected = {"strategy": "chain", "root": parent, "child": role}
+                incorrect = {
+                    "strategy": "chain",
+                    "root": {
+                        "strategy": "index",
+                        "base": css("article.card"),
+                        "index": 1,
+                    },
+                    "child": role,
+                }
+                ambiguous = {
+                    "strategy": "chain",
+                    "root": css("article.card"),
+                    "child": role,
+                }
+                scoped = await validate([selected, incorrect, ambiguous], states=False)
+                assert (
+                    scoped[0]["status"] == "unique-target"
+                    and scoped[0]["rootIdentity"] == "confirmed"
+                )
+                assert scoped[1]["rootIdentity"] == "wrong" and "count" not in scoped[1]
+                assert scoped[2]["rootCount"] == 3 and "count" not in scoped[2]
+                marker.pop("root")
                 partial = await validate([css("["), dental])
                 assert [item["status"] for item in partial] == [
                     "validation-error",
                     "unique-target",
                 ]
-                assert (await validate([dental], trial="click"))[0]["actionability"][
-                    "status"
-                ] == "passed"
+                await page.bring_to_front()
+                assert (await validate([dental], trial="click", timeout=3000))[0][
+                    "actionability"
+                ]["status"] == "passed"
                 assert await page.locator("#actions").inner_text() == "0"
                 assert (await validate([dental], trial="fill"))[0]["actionability"][
                     "status"

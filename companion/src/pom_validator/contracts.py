@@ -3,7 +3,19 @@ from dataclasses import dataclass
 
 from playwright.async_api import Locator, Page
 
-STRATEGIES = ("css", "test-id", "role", "label", "placeholder", "text", "alt", "title")
+STRATEGIES = (
+    "css",
+    "test-id",
+    "role",
+    "label",
+    "placeholder",
+    "text",
+    "alt",
+    "title",
+    "chain",
+    "filter",
+    "index",
+)
 ROLE = re.compile(r"[a-z]{1,32}")
 MARKER = re.compile(r"data-pom-validation-[a-f0-9]{32}")
 TOKEN = re.compile(r"[a-f0-9]{32}")
@@ -36,21 +48,55 @@ def boolean(data: dict, name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class LocatorSpec:
     strategy: str
-    value: str
+    value: str = ""
     argument: str = ""
+    base: "LocatorSpec | None" = None
+    child: "LocatorSpec | None" = None
+    index: int = 0
 
     @classmethod
-    def parse(cls, value: object) -> "LocatorSpec":
+    def parse(cls, value: object, depth: int = 0) -> "LocatorSpec":
+        if depth > 4:
+            raise RequestError("Locator composition exceeds four steps.")
         data = object_value(value)
         strategy = data.get("strategy")
         if strategy not in STRATEGIES:
             raise RequestError("Unsupported locator strategy.")
-        if strategy == "css":
+        if strategy == "chain":
+            required = {"strategy", "root", "child"}
+            spec = cls(
+                strategy,
+                base=cls.parse(data.get("root"), depth + 1),
+                child=cls.parse(data.get("child"), depth + 1),
+            )
+        elif strategy == "filter":
+            base = cls.parse(data.get("base"), depth + 1)
+            if "has" in data:
+                required = {"strategy", "base", "has"}
+                spec = cls(
+                    strategy, base=base, child=cls.parse(data.get("has"), depth + 1)
+                )
+            else:
+                required = {"strategy", "base", "text"}
+                spec = cls(strategy, string(data.get("text"), "filter text"), base=base)
+        elif strategy == "index":
+            required = {"strategy", "base", "index"}
+            index = data.get("index")
+            if type(index) is not int or not 0 <= index < 10_000:
+                raise RequestError("Invalid explicit index.")
+            spec = cls(
+                strategy, base=cls.parse(data.get("base"), depth + 1), index=index
+            )
+        elif strategy == "css":
             selector = string(data.get("selector"), "CSS selector")
             unquoted = re.sub(
                 r"""\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'""", " ", selector
             )
-            if re.match(r"^\s*(?:[/]|\.\.|[\w:-]+\s*=)", selector) or ">>" in unquoted:
+            if (
+                re.match(r"^\s*(?:[/]|\.\.|[\w:-]+\s*=)", selector)
+                or ">>" in unquoted
+                or re.search(r":scope\b(?!\s*>)", unquoted, re.I)
+            ):
                 raise RequestError("Only a single CSS selector is supported.")
             required = {"strategy", "selector"}
             spec = cls(strategy, selector)
@@ -73,19 +119,38 @@ class LocatorSpec:
             raise RequestError("Unexpected locator options.")
         return spec
 
-    def construct(self, page: Page) -> Locator:
+    def test_id_attributes(self) -> set[str]:
+        values = {self.argument} if self.strategy == "test-id" else set()
+        for child in (self.base, self.child):
+            if child:
+                values.update(child.test_id_attributes())
+        return values
+
+    def construct(self, page: Page, scope: Locator | None = None) -> Locator:
+        receiver = scope if scope is not None else page
+        if self.base:
+            base = self.base.construct(page, scope)
+            if self.strategy == "chain" and self.child:
+                return self.child.construct(page, base)
+            if self.strategy == "filter":
+                return (
+                    base.filter(has=self.child.construct(page))
+                    if self.child
+                    else base.filter(has_text=self.value)
+                )
+            return base.nth(self.index)
         if self.strategy == "css":
-            return page.locator("css=" + self.value)
+            return receiver.locator("css=" + self.value)
         if self.strategy == "role":
-            return page.get_by_role(self.argument, name=self.value, exact=True)
+            return receiver.get_by_role(self.argument, name=self.value, exact=True)
         if self.strategy == "test-id":
-            return page.get_by_test_id(self.value)
+            return receiver.get_by_test_id(self.value)
         dispatch = {
-            "label": page.get_by_label,
-            "placeholder": page.get_by_placeholder,
-            "text": page.get_by_text,
-            "alt": page.get_by_alt_text,
-            "title": page.get_by_title,
+            "label": receiver.get_by_label,
+            "placeholder": receiver.get_by_placeholder,
+            "text": receiver.get_by_text,
+            "alt": receiver.get_by_alt_text,
+            "title": receiver.get_by_title,
         }
         return dispatch[self.strategy](self.value, exact=True)
 
@@ -95,6 +160,7 @@ class Correlation:
     attribute: str
     nonce: str
     target: bool
+    root: bool = False
 
     @classmethod
     def parse(cls, value: object) -> "Correlation":
@@ -103,7 +169,12 @@ class Correlation:
         nonce = string(data.get("nonce"), "correlation nonce", 32)
         if not MARKER.fullmatch(attribute) or not TOKEN.fullmatch(nonce):
             raise RequestError("Invalid correlation marker.")
-        return cls(attribute, nonce, boolean(data, "target", True))
+        return cls(
+            attribute,
+            nonce,
+            boolean(data, "target", True),
+            boolean(data, "root", False),
+        )
 
 
 @dataclass(frozen=True)
