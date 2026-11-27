@@ -26,7 +26,7 @@ PASS records exercised behavior or directly reviewed implementation. NOT VERIFIE
 | AC-002.20 New tests | PASS | Vitest unit and Chromium suites cover ranking, semantic strategies, scanning, and the UI. |
 | AC-002.21 Existing tests | PASS | The four original generator assertions still run against structured candidates. |
 | AC-002.22 Build | PASS | TypeScript and the production extension build pass locally. |
-| AC-002.23 GitHub Actions | NOT VERIFIED | The push workflow includes all local checks. A hosted run is needed to confirm the runner setup. |
+| AC-002.23 GitHub Actions | PASS | The hosted workflow completed dependency installation, unit tests, the build, and browser tests. [GitHub Actions run](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46052250012) |
 | AC-002.24 Documentation | PASS | README, changelog, guidance, architecture, current state, roadmap, and this checklist cover the implementation. |
 | AC-002.25 Permissions and services | PASS | The storage permission saves preferences. Scanning and generation remain local. |
 
