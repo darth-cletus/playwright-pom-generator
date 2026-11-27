@@ -1,3 +1,13 @@
+# Installed dependencies
 node_modules/
-dist/
-coverage/
+
+# Build and test output
+/dist/
+/coverage/
+
+# Local logs
+npm-debug.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db
