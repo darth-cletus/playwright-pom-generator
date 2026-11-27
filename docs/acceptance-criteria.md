@@ -201,3 +201,108 @@ A Windows headless Chromium run attached through Python Playwright over loopback
 4. Validate a disabled control, optionally try a click trial, and compare state with count and identity. Verify the page action count stays unchanged. The Python fixture suite also verifies a hidden locator and read-only and checked inputs.
 5. Validate several selected elements, cancel partway, and review progress. Choose a valid candidate and export Python and JSON. Confirm the JSON distinguishes both evidence sources and contains no pairing token.
 6. Replace a picked node and reload. Confirm old evidence is historical. Disconnect and stop the companion with Ctrl+C. Verify standalone scan, pick, highlight, and generation still work. Record Chrome and Edge acceptance separately.
+
+## POM-005 reusable component acceptance
+
+| Criterion | Status | Evidence |
+| --- | --- | --- |
+| AC-005.01 The page object model supports reusable component definitions. | PASS | Schema v2 stores accepted definitions and shared member candidates. |
+| AC-005.02 Multiple component instances can reference one component definition. | PASS | Chromium models Dental, Vision, and Life with one SpecialtyPlanCard. |
+| AC-005.03 Component collections are represented explicitly. | PASS | The model stores a collection locator, sampled count, and optional key binding. |
+| AC-005.04 Component definitions and instances have stable model identifiers. | PASS | Component and instance IDs derive from document identities and persist across rechecks. |
+| AC-005.05 Users can manually define component roots. | PASS | The panel defines a component from a live root row. |
+| AC-005.06 Component roots can be selected using the interactive inspector. | PASS | The unpacked test picks status containers with the inspector and defines a component. |
+| AC-005.07 Users can discover child elements within component boundaries. | PASS | Content discovery enumerates bounded descendant member slots. |
+| AC-005.08 Automatic discovery identifies representative repeated components. | PASS | The unpacked test groups the three insurance plan cards. |
+| AC-005.09 Structural signatures are deterministic. | PASS | Unit tests compare normalized features independently of ordering. |
+| AC-005.10 Instance-specific text does not prevent appropriate component grouping. | PASS | Card titles and descriptions differ in the fixture and still group. |
+| AC-005.11 Representative minor structural variations are supported. | PASS | Only Dental includes the promotional member. |
+| AC-005.12 Similar but unrelated structures are not incorrectly grouped in regression fixtures. | PASS | The notice shares the parent and basic layout but stays outside the plan group. |
+| AC-005.13 Component candidate rankings are explainable. | PASS | The panel lists boundary family, sample count, overlap, and collection evidence. |
+| AC-005.14 Users can accept, modify, or reject component candidates. | PASS | The panel exposes accept, reject, and editing controls. |
+| AC-005.15 Component root locator candidates use the existing locator engine. | PASS | The content extractor uses the existing ElementCollection builder. |
+| AC-005.16 Individual component roots support uniqueness validation. | PASS | The generator requires a unique root candidate. Live tests check root uniqueness. |
+| AC-005.17 Intentional collection matches are distinguished from locator ambiguity. | PASS | Collections compare sampled or runtime counts as intentional multiplicity. |
+| AC-005.18 Component-relative locator generation is supported. | PASS | Package execution uses root-bound relative member locators. |
+| AC-005.19 Globally ambiguous locators can be validated within component scope. | PASS | The shared See plans role locator is ambiguous globally and unique in each card. |
+| AC-005.20 Structured locator chaining is supported. | PASS | The companion and generator support a bounded root and child operation. |
+| AC-005.21 Supported locator filters generate valid Playwright expressions. | PASS | Live tests and generated factories execute a Playwright containment filter. |
+| AC-005.22 Arbitrary executable locator expressions are not accepted. | PASS | The dispatchers use allowlisted structured data and reject unsupported engines. |
+| AC-005.23 Component instances can be identified using meaningful parameters. | PASS | Generated heading lookup resolves Life by name. |
+| AC-005.24 Duplicate component identifiers are detected. | PASS | Graph validation rejects duplicate model identifiers and duplicate configured keys. |
+| AC-005.25 Positional component identification is explicit rather than silently applied. | PASS | Generated nth lookup is explicit. The unit suite requires a manual choice for a positional root fallback. |
+| AC-005.26 Component parameterization generates valid Python. | PASS | The generated Python uses a typed str parameter and a native role argument. |
+| AC-005.27 Component collections support appropriate instance retrieval. | PASS | The unpacked test imports the ZIP and retrieves instances by heading and index. |
+| AC-005.28 Collection locators use lazy resolution. | PASS | Constructors retain Locator objects and count or resolve on method calls. |
+| AC-005.29 Nested components are supported. | PASS | The unpacked test creates a nested StatusBadge definition and relationship. |
+| AC-005.30 Circular component relationships are rejected. | PASS | The unit suite rejects circular references. |
+| AC-005.31 Nested component locators remain correctly scoped. | PASS | The generated Life instance reads the nested status through its own root. |
+| AC-005.32 Shared component elements are identified. | PASS | All three plan instances emit one shared see_plans_button definition. |
+| AC-005.33 Optional component elements are supported. | PASS | The Dental promotion is marked optional. |
+| AC-005.34 Missing required elements produce validation failures. | PASS | The unit suite blocks generation for missing required members. |
+| AC-005.35 Missing optional elements are distinguished from required-element failures. | PASS | The generated presence helper returns true for Dental and false for Vision. |
+| AC-005.36 Component interaction methods reuse existing generation logic. | PASS | The same method renderer handles flat rows and component members. |
+| AC-005.37 Non-interactive component elements can be used as assertion targets. | PASS | The generated package exposes heading, description, and status as assertion locators. |
+| AC-005.38 Browser-side validation supports component scope. | PASS | The scoped DOM matcher uses root-local semantic indexes. |
+| AC-005.39 Actual Playwright runtime validation supports composed component locators where available. | PASS | Live Python and extension tests execute composed locators over CDP. |
+| AC-005.40 Component root identity and child target identity are distinguished. | PASS | The result reports root count and root identity separately from child identity. |
+| AC-005.41 Wrong-target component instances are detected where target verification is supported. | PASS | The live companion test rejects a wrong root before evaluating its child. |
+| AC-005.42 Component definitions can be evaluated against multiple instances. | PASS | Chromium validates the same definition across all three representative cards. |
+| AC-005.43 Cross-instance validation results are displayed. | PASS | The component panel shows browser and runtime evidence per instance. |
+| AC-005.44 Validation limitations and freshness are reported accurately. | PASS | Runtime evidence carries expiry and archived status. Browser results identify their method. |
+| AC-005.45 Component-aware locator ranking is deterministic. | PASS | Candidates rank by valid sample coverage and score, then stable tie-breaks. |
+| AC-005.46 Manual locator overrides are preserved. | PASS | Recheck preserves the selected candidate ID or displays it as unavailable. |
+| AC-005.47 The side panel supports hierarchical component management. | PASS | Unpacked tests add definitions, representatives, and a nested relationship. |
+| AC-005.48 Component definitions and instances are visually distinguishable. | PASS | Definitions, instances, members, and nested relationships have distinct panel sections. |
+| AC-005.49 Component roots can be highlighted. | PASS | The shared overlay supports individual roots and bounded group highlights. |
+| AC-005.50 Child elements can be highlighted within components. | PASS | Member rows use the existing per-node highlight command. |
+| AC-005.51 Existing page elements can be moved into components. | PASS | The unpacked test invokes moving matching page rows into the component. |
+| AC-005.52 Scope changes trigger appropriate locator regeneration or revalidation. | PASS | Move and restore operations use scopes verified by the content engine. |
+| AC-005.53 User customizations survive component model reconciliation. | PASS | Unit tests preserve names, choices, and optionality across rechecks. |
+| AC-005.54 Reusable Python component classes are generated. | PASS | Generated output contains a single SpecialtyPlanCard class. |
+| AC-005.55 Multiple instances reuse the same generated component class. | PASS | Three representative page attributes reuse SpecialtyPlanCard. |
+| AC-005.56 Generated component constructors accept appropriate root locators. | PASS | Component constructors accept a synchronous Playwright Locator. |
+| AC-005.57 Generated component methods operate within the correct scope. | PASS | Generated click selects Vision without activating Dental or Life. |
+| AC-005.58 Generated nested components use composition. | PASS | The browser test imports the ZIP and reads nested StatusBadge content. |
+| AC-005.59 Generated Python identifiers are valid and collision-safe. | PASS | Model validation and the shared Python name allocator prevent identifier collisions. |
+| AC-005.60 Existing flat page object generation remains available. | PASS | Existing unversioned flat models and generator tests continue to pass. |
+| AC-005.61 Single-file component generation is supported. | PASS | The panel renders page and component classes as a single Python preview. |
+| AC-005.62 Multi-file Python generation is supported. | PASS | The unpacked extension downloads a package ZIP. |
+| AC-005.63 Generated package imports resolve successfully. | PASS | Python imports the generated page and both component modules from the ZIP. |
+| AC-005.64 Generated Python passes syntax validation. | PASS | The package test parses every file with Python AST. |
+| AC-005.65 Generated component classes execute successfully against representative fixtures. | PASS | The exported package executes against the plan fixture using Python Playwright. |
+| AC-005.66 JSON exports preserve component definitions and relationships. | PASS | The unpacked test checks version, instances, and nested links in downloaded JSON. |
+| AC-005.67 JSON schema evolution is documented and tested. | PASS | Schema v2 behavior and unsupported versions are tested. |
+| AC-005.68 Existing flat models remain supported or have an explicit migration path. | PASS | Unversioned and v1 flat generation remain supported. |
+| AC-005.69 Invalid component references are rejected. | PASS | Unit tests reject missing definition references. |
+| AC-005.70 Component discovery performance is evaluated using representative fixtures. | PASS | Chromium measures the 650-extra-boundary fixture from discovery click to panel result. |
+| AC-005.71 Discovery and validation resource consumption is bounded. | PASS | Explicit root, member, proposal, nesting, request, and highlight bounds apply. |
+| AC-005.72 Sensitive input values are not collected or persisted. | PASS | Discovery uses existing metadata and never reads input values. |
+| AC-005.73 DOM-derived content cannot introduce arbitrary generated code. | PASS | Structured locators and sanitized names constrain generated Python and ZIP paths. |
+| AC-005.74 The extension remains functional without the optional runtime validator. | PASS | Unpacked discovery, model editing, and ZIP execution run with the companion absent. |
+| AC-005.75 Automated tests cover the component domain model. | PASS | Unit tests cover graph, serialization, candidate selection, and reconciliation. |
+| AC-005.76 Automated tests cover discovery and similarity analysis. | PASS | Unit and unpacked tests cover structural similarity, variants, and unrelated markup. |
+| AC-005.77 Actual Playwright tests cover scoped locator semantics. | PASS | Live Playwright verifies confirmed, wrong, and ambiguous root behavior. |
+| AC-005.78 Automated tests cover generated component execution. | PASS | Real downloaded Python modules are imported and executed. |
+| AC-005.79 Existing TypeScript tests continue to pass. | PASS | All existing TypeScript unit tests pass. |
+| AC-005.80 Existing Python tests continue to pass where applicable. | PASS | The original companion tests pass with added scoped cases. |
+| AC-005.81 Existing POM-002 through POM-004 functionality remains operational. | PASS | All prior feature suites remain in the final regression run. |
+| AC-005.82 The production browser extension builds successfully. | PASS | TypeScript checking and bundle generation pass. |
+| AC-005.83 GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted run pending. |
+| AC-005.84 Documentation accurately reflects the implementation. | PASS | README, ADR, architecture, changelog, current state, and matrix describe v0.5. |
+| AC-005.85 No unjustified extension permissions or external services are introduced. | PASS | Production manifest permissions remain unchanged and the companion stays local. |
+
+### Repeat discovery and runtime evidence
+
+The Chromium test observed one three-instance plan definition for Dental, Vision, and Life. The notice was outside that group. The promotion was present for Dental and optional for the other two. The companion verified one intended root and one intended button in each card. A separate live check rejected a Vision root while Dental was marked. A three-root chain returned the root ambiguity without evaluating children.
+
+On Windows headless Chromium, discovery reached the panel in 127 ms on one run with 650 extra candidate boundaries. Timing includes extension messaging, panel rendering, and test polling. The fixture supports `?large=1` for a manual run. The suite emits the observed timing without imposing a threshold.
+
+### Manual Chrome and Edge acceptance
+
+1. Build and load the unpacked extension. Serve `fixtures/components.html` over loopback. Scan it and open **Reusable components**. Discover and accept the plan group. Review that the notice stays outside it and the promotion is optional.
+2. Rename the class to `SpecialtyPlanCard`. Review **Instances** and **Members**, highlight roots and members, and inspect the exact role locator for **See plans**. Rename a row, move matching rows into the component, recheck, and verify the edits survive.
+3. In the inspector pick the status container in each card. Define one status component and add the other roots. Link it under the plan definition as a nested instance. Review the scope evidence and remove the nested class's page exposure if desired.
+4. Pair with the v0.5 companion. Choose **Validate component with Playwright**. Inspect root and child identity, heading parameter lookups, each sampled member, and intentional collection counts.
+5. Export Python, ZIP, and JSON. Import the generated package and use `get_specialty_plan_card("Vision")` to exercise only the Vision button. Check the promotion's presence helper and the nested status.
+6. Reload or replace a sampled root. Check that prior runtime evidence is historical, and recheck against live roots. Disconnect the companion and repeat browser-only discovery. Record installed Chrome and Edge acceptance separately.

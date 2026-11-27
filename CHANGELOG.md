@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (unreleased)
+
+- Added reviewed repeated-component discovery, manual boundaries, scoped member editing, reusable instances and collections, and nested component relationships.
+- Added scoped browser and optional Python Playwright evidence with separate root and child identity checks.
+- Added lazy Python component classes, parameterized lookup, deterministic package previews and ZIP exports, and schema-v2 JSON.
+
 ## v0.4.0 (unreleased)
 
 - Added an optional authenticated loopback companion for real Python Playwright locator validation over CDP.

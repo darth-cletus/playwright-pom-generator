@@ -40,6 +40,12 @@ With focus on the page, press **Enter** to add the current target or **Escape** 
 
 Try [the specialty plan fixture](fixtures/inspector.html) over localhost. The three **See plans** buttons share an accessible name. The inspector exposes the ambiguous role locator and the unique test ID alternatives.
 
+## Build reusable components
+
+Scan the page or pick a container in the inspector. Open **Reusable components** and choose **Discover components**, or select an inspected row and choose **Define component root**. Review sampled instances, scoped members, and optional absences before accepting. Names and locator choices can be edited in the definition, and matching page rows can be moved into it.
+
+The **Python preview** supports single-file and package output. **Export Python package** downloads generated pages, component modules, and initialization files as a ZIP. The JSON model records accepted definitions and relationships. Try Dental, Vision, and Life in `fixtures/components.html`. [Component architecture and limits](docs/architecture.md)
+
 ## Development
 
 `npm run dev` watches bundled source files. Rebuild after changing static assets and reload the extension.
