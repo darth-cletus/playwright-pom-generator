@@ -1,7 +1,7 @@
 import type {Action} from '../core/model';
 import {accessibleName, accessibleRole, associatedLabels, normalize, pageText} from './accessibility';
 
-export function extractMetadata(element: HTMLElement, text: WeakMap<Element, string>) {
+export function extractMetadata(element: Element, text: WeakMap<Element, string>) {
   const tag = element.localName;
   const type = tag === 'input' ? (element as HTMLInputElement).type : '';
   const role = accessibleRole(element);
@@ -13,7 +13,7 @@ export function extractMetadata(element: HTMLElement, text: WeakMap<Element, str
   let action: Action = 'click';
   if (tag === 'select') action = 'select';
   else if (type === 'checkbox' || type === 'radio') action = 'check';
-  else if (tag === 'textarea' || element.isContentEditable ||
+  else if (tag === 'textarea' || (element instanceof HTMLElement && element.isContentEditable) ||
     (type && !['button', 'submit', 'reset', 'file', 'image', 'range', 'color'].includes(type))) action = 'fill';
   return {tag, role, name, labels, exactText, label: normalize(label).slice(0, 120), action,
     defaultSelected: !['file', 'range', 'color'].includes(type)};

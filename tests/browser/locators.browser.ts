@@ -72,7 +72,7 @@ async function scan() {
           return highlight;
         };
       },
-    }}}});
+    }, onConnect: {addListener() {}}}}});
   });
   await page.addScriptTag({content});
   return page.evaluate(settings => window.scanFixture(settings), defaultSettings);
@@ -200,7 +200,7 @@ it('scans and highlights controls without exporting live form values', async () 
     expect(await runtimeLocator(element.candidates[0].locator).evaluate(node =>
       [...document.querySelectorAll('[data-testid=repeat]')].indexOf(node))).toBe(index);
   }
-  expect(await page.evaluate(id => window.highlightFixture(id), repeated[0].id)).toEqual({ok: true});
+  expect(await page.evaluate(id => window.highlightFixture(id), repeated[0].referenceId!)).toEqual({ok: true});
 });
 
 it('scans the original login fixture and keeps its native interaction types', async () => {

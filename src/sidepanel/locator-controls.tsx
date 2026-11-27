@@ -54,10 +54,12 @@ export function LocatorControls({element, onChoice}: {element: ElementModel; onC
     <label htmlFor={id}>Locator</label>
     <select id={id} value={element.choice ?? ''} onChange={event => onChoice(event.target.value || null)}>
       <option value="">Automatic{recommended ? ` · ${recommended.basis}` : ' · No unique candidate'}</option>
+      {element.choice && !active && <option value={element.choice}>Previous choice unavailable · select a locator</option>}
       {element.candidates.map(candidate => <option key={candidate.id} value={candidate.id}>
         {candidate.basis} · {candidate.locator.strategy} · {candidate.score}/100 · {validationStatuses[candidate.validation.status]}
       </option>)}
     </select>
+    {!recommended && <small>No unique locator. Inspect a more specific target or add a stable test ID.</small>}
     {active && <>
       <small><code>{pythonLocator(active.locator)}</code></small>
       <small>{active.locator.strategy} · {active.score}/100 · {validationStatuses[active.validation.status]}

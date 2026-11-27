@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.0 (unreleased)
+
+- Added interactive semantic and exact inspection, in-page highlights and tooltips, and DOM hierarchy navigation.
+- Unified scanned and picked elements into one collection with stable row IDs, live references, duplicate prevention, and detached element warnings.
+- Added assertion locators for static targets and collection reordering and removal.
+- Added Chromium unpacked-extension tests covering selection, cleanup, regression behavior, export, and large-DOM hover timing.
+
 ## v0.2.0 (unreleased)
 
 - Added structured locator candidates, accessibility-based strategies, configurable test ID attributes, and explainable stability and reliability scores.

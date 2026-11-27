@@ -15,7 +15,7 @@ function structuralSelector(element: Element): string {
 }
 
 export function generateCandidates(
-  element: HTMLElement,
+  element: Element,
   metadata: ReturnType<typeof extractMetadata>,
   settings: LocatorSettings,
   validate: LocatorValidator,
