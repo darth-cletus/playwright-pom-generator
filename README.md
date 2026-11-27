@@ -1,13 +1,13 @@
 # Playwright Page Object Generator
 
-Version 0.1.0 — local-only Chromium extension prototype.
+Generate synchronous Python Playwright page objects from the active tab in Chrome or Edge. Page scanning and code generation run locally.
 
 ## Build and install (Windows PowerShell or other shell)
 
 Requires Node.js 22+ and npm. From this directory:
 
 ```sh
-npm install
+npm ci
 npm test
 npm run build
 ```
@@ -24,19 +24,30 @@ python -m http.server 8000
 
 Open http://localhost:8000/fixtures/login.html. Scan, select controls, rename attributes, choose locators, highlight controls and export Python or JSON. Install Playwright in your Python test environment (`pip install pytest-playwright`, then `playwright install`). Import the exported class into a test and construct it with the pytest `page` fixture.
 
-## Architecture
+## Choose a locator
 
-- `src/background`: opens the side panel on toolbar action.
-- `src/content`: scans visible controls, ranks CSS/test-ID candidates, and highlights elements. Runs in the isolated extension world.
-- `src/core/model.ts`: typed intermediate representation.
-- `src/core/python.ts`: deterministic Python generation and identifier collision handling.
-- `src/sidepanel`: React selection, naming, preview and export UI.
-- `tests`: generator unit tests; `fixtures`: manual browser fixture.
+Each element starts with the highest-ranked locator that matches only that element in the browser scan. Choose another candidate to override it. Expand **Locator details** to see scoring explanations and warnings. Choose **Automatic** to restore the recommendation. Selected alternatives are reflected in Python and stored by candidate ID in JSON exports.
 
-## Limitations and verification
+**Locator settings** saves an ordered list of recognized test ID attributes on this browser. Keep the Playwright test ID attribute at `data-testid` unless your Playwright project configures a different one. Other recognized attributes produce CSS selectors. Scan again to apply settings changes.
 
-This initial version uses DOM CSS match counts, not Playwright runtime validation. The default test ID attribute is assumed. Structural CSS fallbacks are fragile. Semantic role/label locators, click-to-pick, iframe/shadow DOM discovery, component grouping, navigation helpers, interaction recording, async Python and importing models are future work. Rescan after DOM changes. Generated code requires review, especially for custom controls and file inputs. No input values, cookies or tokens are intentionally collected; labels and locator attributes can still contain sensitive application information, so review exports. No network transmission is implemented. Dependencies could not be downloaded in the creation environment, so the full build, Vitest suite and browser integration have not been executed there.
+Match counts come from CSS queries or browser-side approximations of semantic locators. Confirm exported locators in Playwright and rescan after DOM changes. Labels and attributes can contain application information, so review exports before sharing them.
 
 ## Development
 
-`npm run dev` watches bundled source files; rerun the build after changing static assets. Reload the extension in the browser after changes. Before release, add actual Playwright locator validation and browser integration tests, semantic locator generation, and dependency lockfile (`npm install` generates one).
+`npm run dev` watches bundled source files. Rebuild after changing static assets and reload the extension.
+
+To run the integration suite, use Python 3 with the pinned test requirements and install the matching Chromium Headless Shell.
+
+```sh
+python -m pip install -r tests/browser/requirements.txt
+npx playwright install --only-shell chromium
+npm run test:browser
+```
+
+On Windows, `py` and `npx.cmd` can substitute for `python` and `npx`. Set `POM_PYTHON` to the Python executable if using a virtual environment. On Linux, add `--with-deps` to the Chromium install command if browser system dependencies are missing.
+
+- [Architecture and validation](docs/architecture.md)
+- [Current implementation and verification](docs/current-state.md)
+- [Acceptance checklist](docs/acceptance-criteria.md)
+- [Roadmap](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)

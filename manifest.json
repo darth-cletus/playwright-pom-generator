@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Playwright Page Object Generator",
-  "version": "0.1.0",
-  "permissions": ["activeTab", "scripting", "sidePanel", "tabs"],
+  "version": "0.2.0",
+  "permissions": ["activeTab", "scripting", "sidePanel", "tabs", "storage"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "action": {"default_title": "Open Page Object Generator"},
   "background": {"service_worker": "background.js"},
