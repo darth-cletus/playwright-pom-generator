@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Locator engine fixture</title>
+<h1>Account settings</h1>
+<form>
+  <label for="email-2">Email address</label>
+  <input id="email-2" type="email" placeholder="name@example.com" data-testid="account-email" data-qa="email" data-cy="contact">
+  <label>Passphrase <input id="password" type="password"></label>
+  <label for="phone">Telephone</label><label for="phone">Work</label><input id="phone" type="tel">
+  <button id="aria" aria-label="Save settings">Save</button>
+  <span id="verb" hidden>Delete</span><span id="noun">project</span>
+  <button id="refs" aria-labelledby="missing verb noun" aria-label="Ignored">Delete now</button>
+  <button id="broken" aria-labelledby="missing" aria-label="Fallback name">Fallback</button>
+  <button id="label-value" aria-labelledby="private-label">Hidden value test</button>
+  <label id="private-label">Private <input type="text" value="sentinel-private"></label>
+  <label for="region">Region</label><select id="region"><option>US</option><option>EU</option></select>
+  <select id="regions" multiple aria-label="Regions"><option>US</option></select>
+  <input id="search" type="search">
+  <input id="range" type="range">
+  <input id="quantity" type="number">
+  <input id="datalist-input" list="choices"><datalist id="choices"><option value="Choice"></datalist>
+  <input id="missing-list" list="missing">
+  <label><input id="check" type="checkbox"> Remember</label>
+  <input id="radio" type="radio" aria-label="One">
+  <input id="submit" type="submit" value="Apply changes">
+  <button id="disabled" disabled title="Save draft">Draft</button>
+</form>
+<div id="combo" role="combobox" aria-label="Choose a plan" aria-expanded="false" tabindex="0"></div>
+<div id="switch" role="invalid switch" aria-label="Notifications" aria-checked="false" tabindex="0"></div>
+<div role="tablist"><button id="tab" role="tab" aria-selected="true">Overview</button></div>
+<div role="menu"><div id="menuitem" role="menuitem">Copy</div></div>
+<a id="link" href="#target">Help</a><a id="linkless">No href</a>
+<img id="logo" alt="Company logo">
+<input id="image-button" type="image" alt="Picture search">
+<dialog id="dialog" open aria-label="Confirmation">Continue?</dialog>
+<table id="table"><tr id="row"><td id="cell">Value</td></tr></table>
+<button id="hidden" hidden>Hidden button</button>
+<button id=":r9:" class="css-a3c4df">Dynamic</button>
+<button id="a17c02b8-2542-4a3c-867b-ccd941c4ee02" aria-label="UUID control">UUID</button>
+<button id="unicode" data-testid='café "雪" &#92; 🦊' title="Compte &#34;principal&#34;">Ouvrir café 🦊</button>
+<button id="nested"><span>Nested</span></button>
+<a id="nested-anchor" href="#nested"><span role="button" tabindex="0">Nested control</span></a>
+<div id="target">Welcome</div>
+<section><button data-testid="repeat">Edit</button></section>
+<section><button data-testid="repeat">Edit</button></section>
+</html>

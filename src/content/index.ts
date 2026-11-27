@@ -1,5 +1,58 @@
-import type {Candidate,ElementModel,Action} from '../core/model';
-import {identifier,quote} from '../core/python';
-let nodes=new Map<string,Element>();let overlay:HTMLElement|undefined;
-function scan(){nodes.clear();const elements:ElementModel[]=[];const selector='button,a[href],input:not([type=hidden]),select,textarea,[role=button],[role=checkbox],[role=combobox],[role=link],[contenteditable=true]';for(const el of document.querySelectorAll(selector)){if(!(el instanceof HTMLElement)||!el.getClientRects().length||getComputedStyle(el).visibility==='hidden')continue;const tag=el.tagName.toLowerCase();const input=el as HTMLInputElement;const type=input.type;const label=(el.getAttribute('aria-label')||Array.from(input.labels||[]).map(l=>l.textContent).join(' ')||el.getAttribute('placeholder')||el.textContent||el.getAttribute('name')||el.id||tag).trim().replace(/\s+/g,' ').slice(0,120);const candidates:Candidate[]=[];function css(s:string,score:number,basis:string,expression?:string){try{const matches=document.querySelectorAll(s);if(Array.from(matches).includes(el))candidates.push({expression:expression||`locator(${quote(s)})`,score,count:matches.length,basis});}catch{ /* invalid selector */ }}for(const attr of ['data-testid','data-test','data-qa','id','name','aria-label','placeholder']){const v=el.getAttribute(attr);if(!v)continue;const s=`[${attr}="${CSS.escape(v)}"]`;const score=attr==='data-testid'?100:attr==='id'?(/\d{3,}|^:r|^react-select-/.test(v)?35:85):attr.startsWith('data-')?95:70;css(s,score,attr,attr==='data-testid'?`get_by_test_id(${quote(v)})`:undefined);}let path=tag;let cur:Element|null=el;const parts:string[]=[];while(cur){const parent:Element|null=cur.parentElement;const index=parent?Array.from(parent.children).indexOf(cur)+1:1;parts.unshift(`${cur.tagName.toLowerCase()}:nth-child(${index})`);cur=parent;}path=parts.join(' > ');css(path,5,'Structural fallback');candidates.sort((a,b)=>Number(b.count===1)-Number(a.count===1)||b.score-a.score);if(!candidates.length)continue;const action:Action=tag==='select'?'select':tag==='input'&&['checkbox','radio'].includes(type)?'check':tag==='textarea'||el.isContentEditable||tag==='input'&&!['button','submit','reset','file','image','range','color'].includes(type)?'fill':'click';const id=String(elements.length);nodes.set(id,el);elements.push({id,name:identifier(label+'_'+(action==='fill'?'input':tag)),label,tag,action,candidates,selected:!(tag==='input'&&['file','range','color'].includes(type)),choice:0});}return {url:location.origin+location.pathname,className:'GeneratedPage',elements};}
-const state=globalThis as typeof globalThis & {__pomInstalled?:boolean};if(!state.__pomInstalled){state.__pomInstalled=true;chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{if(msg.type==='POM_SCAN'){reply(scan());}else if(msg.type==='POM_HIGHLIGHT'){overlay?.remove();const el=nodes.get(msg.id);if(el?.isConnected){el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();overlay=document.createElement('div');Object.assign(overlay.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',border:'3px solid #2563eb',pointerEvents:'none',zIndex:'2147483647',boxSizing:'border-box'});document.documentElement.append(overlay);const current=overlay;setTimeout(()=>current.remove(),1800);}reply({ok:!!el?.isConnected});}});}
+import {identifier} from '../core/python-names';
+import {defaultSettings, type LocatorSettings} from '../core/locator';
+import type {PageModel} from '../core/model';
+import {generateCandidates} from './candidates';
+import {extractMetadata} from './metadata';
+import {createDomValidator} from './validation';
+
+const discovery = 'button,a[href],input:not([type=hidden]),select,textarea,[role~=button],[role~=checkbox],[role~=combobox],[role~=link],[role~=textbox],[role~=searchbox],[role~=radio],[role~=listbox],[role~=slider],[role~=spinbutton],[role~=switch],[role~=tab],[role~=menuitem],[contenteditable=true]';
+const nodes = new Map<string, Element>();
+let overlay: HTMLElement | undefined;
+
+function scan(settings: LocatorSettings): PageModel {
+  nodes.clear();
+  const elements: PageModel['elements'] = [];
+  const text = new WeakMap<Element, string>();
+  const validate = createDomValidator(document, text);
+  for (const element of document.querySelectorAll(discovery)) {
+    if (!(element instanceof HTMLElement) || !element.getClientRects().length ||
+      ['hidden', 'collapse'].includes(getComputedStyle(element).visibility)) continue;
+    const metadata = extractMetadata(element, text);
+    const {label, action, tag, defaultSelected} = metadata;
+    const candidates = generateCandidates(element, metadata, settings, validate);
+    const id = String(elements.length);
+    nodes.set(id, element);
+    elements.push({
+      id, name: identifier(label + '_' + (action === 'fill' ? 'input' : tag)),
+      label, tag, action, candidates, selected: defaultSelected, choice: null,
+    });
+  }
+  return {url: location.origin + location.pathname, className: 'GeneratedPage', elements};
+}
+
+function highlight(id: string) {
+  overlay?.remove();
+  const element = nodes.get(id);
+  if (!element?.isConnected) return {ok: false};
+  element.scrollIntoView({block: 'center'});
+  const rect = element.getBoundingClientRect();
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    position: 'fixed', left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px',
+    height: rect.height + 'px', border: '3px solid #2563eb', pointerEvents: 'none',
+    zIndex: '2147483647', boxSizing: 'border-box',
+  });
+  document.documentElement.append(box);
+  overlay = box;
+  setTimeout(() => box.remove(), 1800);
+  return {ok: true};
+}
+
+const state = globalThis as typeof globalThis & {__pomInstalled?: boolean};
+if (!state.__pomInstalled) {
+  state.__pomInstalled = true;
+  chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+    if (message.type === 'POM_SCAN') reply(scan(message.settings ?? defaultSettings));
+    else if (message.type === 'POM_HIGHLIGHT') reply(highlight(message.id));
+  });
+}
