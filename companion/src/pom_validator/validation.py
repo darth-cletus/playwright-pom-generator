@@ -86,6 +86,31 @@ async def trial_action(locator: Locator, action: str, timeout: int) -> str:
         return "failed"
 
 
+async def resolve_scope(
+    page: Page,
+    spec: LocatorSpec,
+    result: dict,
+    root_marker: str | None,
+    scope: Locator | None = None,
+) -> Locator | None:
+    if spec.strategy != "chain" or not spec.base or not spec.child:
+        return spec.construct(page, scope)
+    parent = await resolve_scope(page, spec.base, {}, None, scope)
+    if parent is None:
+        result.update(rootCount=0, rootIdentity="unverified")
+        return None
+    count = await parent.count()
+    result.update(rootCount=count, rootIdentity="unverified")
+    if count != 1:
+        return None
+    if root_marker:
+        confirmed = await parent.and_(page.locator(root_marker)).count() == 1
+        result["rootIdentity"] = "confirmed" if confirmed else "wrong"
+        if not confirmed:
+            return None
+    return await resolve_scope(page, spec.child, {}, None, parent)
+
+
 async def measure(page: Page, spec: LocatorSpec, request: ValidationRequest) -> dict:
     start = time.monotonic()
     marker = request.correlation
@@ -101,7 +126,17 @@ async def measure(page: Page, spec: LocatorSpec, request: ValidationRequest) -> 
             if not await correlated(page, marker):
                 result["status"] = "stale-document"
                 return result
-            locator = spec.construct(page)
+            root_marker = (
+                f'css=[{marker.attribute}-root="{marker.nonce}"]'
+                if marker.root
+                else None
+            )
+            locator = await resolve_scope(page, spec, result, root_marker)
+            if locator is None:
+                result["message"] = (
+                    "The component root did not resolve uniquely to the intended instance."
+                )
+                return result
             target_args = [marker.attribute + "-target", marker.nonce]
             measured = await locator.evaluate_all(MATCH, target_args)
             count = measured["count"]
@@ -132,6 +167,11 @@ async def measure(page: Page, spec: LocatorSpec, request: ValidationRequest) -> 
                     }
             if not await correlated(page, marker):
                 result.update(status="stale-document", identity="stale")
+            elif (
+                spec.strategy == "chain"
+                and await resolve_scope(page, spec, {}, root_marker) is None
+            ):
+                result.update(status="stale-target", identity="stale")
             elif await locator.evaluate_all(MATCH, target_args) != measured:
                 result.update(status="stale-target", identity="stale")
     except (TimeoutError, PlaywrightTimeout):

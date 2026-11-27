@@ -12,6 +12,7 @@ export interface Correlation {
   attribute: string;
   nonce: string;
   target: boolean;
+  root?: boolean;
 }
 
 export interface RuntimeResult {
@@ -22,6 +23,8 @@ export interface RuntimeResult {
   timestamp: string;
   durationMs: number;
   count?: number;
+  rootCount?: number;
+  rootIdentity?: 'confirmed' | 'wrong' | 'unverified';
   message?: string;
   states?: Partial<Record<'attached' | 'visible' | 'enabled' | 'editable' | 'readOnly' | 'checked', boolean | null>>;
   stateError?: string;
@@ -46,6 +49,7 @@ export interface CompanionStatus {
   browserVersion: string | null;
   browserId: string | null;
   connected: boolean;
+  strategies?: string[];
 }
 
 export function currentEvidence(evidence?: RuntimeEvidence, now = Date.now()) {

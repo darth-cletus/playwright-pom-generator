@@ -131,9 +131,19 @@ class Service:
             for spec in request.locators:
                 try:
                     async with asyncio.timeout_at(deadline):
-                        if spec.strategy == "test-id":
+                        attributes = spec.test_id_attributes()
+                        if len(attributes) > 1:
+                            results.append(
+                                {
+                                    **unavailable(spec),
+                                    "status": "validation-error",
+                                    "message": "Use one Playwright test ID attribute in a composed locator.",
+                                }
+                            )
+                            continue
+                        if attributes:
                             connection.driver.selectors.set_test_id_attribute(
-                                spec.argument
+                                next(iter(attributes))
                             )
                         results.append(await measure(page, spec, request))
                 except TimeoutError:

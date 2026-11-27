@@ -23,8 +23,8 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install -c companion/constraints.txt -e './companion[dev]'
-      - run: python -m ruff check companion
-      - run: python -m ruff format --check companion
+      - run: python -m ruff check companion tests/browser/run_component_package.py
+      - run: python -m ruff format --check companion tests/browser/run_component_package.py
       - run: npx playwright install --with-deps chromium
       - run: python -m pytest companion -q -s
       - run: npm run test:browser

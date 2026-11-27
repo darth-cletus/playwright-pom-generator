@@ -1,6 +1,6 @@
 # Playwright runtime validation companion
 
-Extension and companion v0.4.0 use protocol v1. Use Python 3.11 or newer and a compatible Chromium browser.
+Extension and companion v0.5.0 use protocol v1. Use Python 3.11 or newer and a compatible Chromium browser. Component validation requires the companion's composed-locator capability. An older v0.4 companion can still validate flat locators.
 
 ## Windows PowerShell
 

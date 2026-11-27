@@ -2,7 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {build} from 'esbuild';
-import {chromium, selectors, type Browser, type Page} from 'playwright';
+import {chromium, selectors, type Browser, type Page, type Locator as PlaywrightLocator} from 'playwright';
 import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import {defaultSettings, type Locator, type LocatorSettings} from '../../src/core/locator';
 import {generate} from '../../src/core/python';
@@ -79,17 +79,21 @@ async function scan() {
   return page.evaluate(settings => window.scanFixture(settings), defaultSettings);
 }
 
-function runtimeLocator(locator: Locator) {
+function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator = page): PlaywrightLocator {
   const exact = {exact: true};
   switch (locator.strategy) {
-    case 'css': return page.locator(locator.selector);
-    case 'test-id': return page.getByTestId(locator.value);
-    case 'role': return page.getByRole(locator.role as Parameters<Page['getByRole']>[0], {...exact, name: locator.name});
-    case 'label': return page.getByLabel(locator.value, exact);
-    case 'placeholder': return page.getByPlaceholder(locator.value, exact);
-    case 'text': return page.getByText(locator.value, exact);
-    case 'alt': return page.getByAltText(locator.value, exact);
-    case 'title': return page.getByTitle(locator.value, exact);
+    case 'css': return scope.locator(locator.selector);
+    case 'test-id': return scope.getByTestId(locator.value);
+    case 'role': return scope.getByRole(locator.role as Parameters<Page['getByRole']>[0], {...exact, name: locator.name});
+    case 'label': return scope.getByLabel(locator.value, exact);
+    case 'placeholder': return scope.getByPlaceholder(locator.value, exact);
+    case 'text': return scope.getByText(locator.value, exact);
+    case 'alt': return scope.getByAltText(locator.value, exact);
+    case 'title': return scope.getByTitle(locator.value, exact);
+    case 'chain': return runtimeLocator(locator.child, runtimeLocator(locator.root, scope));
+    case 'filter': return runtimeLocator(locator.base, scope).filter(locator.has
+      ? {has: runtimeLocator(locator.has)} : {hasText: locator.text});
+    case 'index': return runtimeLocator(locator.base, scope).nth(locator.index);
   }
 }
 
@@ -267,3 +271,46 @@ it('keeps a panel override after renaming or toggling selection and restores aut
   await root.getByLabel('Locator', {exact: true}).selectOption('');
   expect(await root.locator('textarea').inputValue()).toContain('self.contact_email = page.get_by_test_id');
 });
+
+it('shows installation guidance if the side panel opens without extension storage', async () => {
+  await page.evaluate(() => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.append(root);
+  });
+  await page.addScriptTag({content: panel});
+  const alert = page.getByRole('alert', {name: ''}).filter({hasText: 'The browser extension APIs are unavailable.'});
+  await alert.waitFor();
+  expect(await page.locator('#root').innerText()).toContain('chrome://extensions');
+  expect(await page.pageErrors()).toEqual([]);
+});
+
+it('measures repeated cards and table rows while retaining the representative root limit', async () => {
+  const samples = await page.evaluate(settings => {
+    const {discoverComponents, ElementCollection} = window.engine;
+    const measurements = [];
+    for (const [kind, size] of [['cards', 3], ['cards', 20], ['cards', 100], ['table', 120]] as const) {
+      if (kind === 'cards') {
+        document.body.innerHTML = '<section>' + Array.from({length: size}, (_, index) =>
+          `<article data-slot="plan" data-testid="plan-${index}"><h2>Plan ${index}</h2><p>Coverage</p><button>See plans</button></article>`
+        ).join('') + '</section>';
+      } else {
+        document.body.innerHTML = '<table><tbody>' + Array.from({length: size}, (_, index) =>
+          `<tr data-testid="row-${index}"><td>Plan ${index}</td><td><button>Details</button></td></tr>`
+        ).join('') + '</tbody></table>';
+      }
+      let counts = {boundaries: 0, candidateRoots: 0, comparisons: 0, groups: 0};
+      const started = performance.now();
+      const actual = discoverComponents(new ElementCollection(), settings, value => {counts = value;});
+      measurements.push({kind, size, ...counts, samples: actual[0]?.instances.length ?? 0,
+        collectionCount: actual[0]?.collection?.count,
+        milliseconds: Number((performance.now() - started).toFixed(1))});
+    }
+    return measurements;
+  }, defaultSettings);
+  console.info('Component structure benchmark', JSON.stringify(samples));
+  expect(samples.map(sample => sample.samples)).toEqual([3, 20, 30, 30]);
+  expect(samples.map(sample => sample.groups)).toEqual([1, 1, 1, 1]);
+  expect(samples.map(sample => sample.collectionCount)).toEqual([3, 20, 100, 120]);
+  expect(samples.map(sample => sample.comparisons)).toEqual([2, 19, 99, 119]);
+}, 15_000);

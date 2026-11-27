@@ -26,5 +26,6 @@ Playwright Page Object Generator is a local Chromium Manifest V3 extension. It s
 - For changes to generated Python, check identifier collisions and locator uniqueness with the existing generator tests.
 - Exercise repeated cards, event suppression and restoration, document changes, and detached nodes in `tests/browser/inspector.browser.ts` when changing inspector behavior.
 - Keep the companion loopback-only. Validate the exact extension origin and bearer secret, dispatch structured locators through the allowlist, and keep marker values and pairing secrets out of exported models.
+- Use the shared locator engine for component roots and members. When extending structured locator operations, update the TypeScript matcher and generator, the Python companion dispatcher, and the scoped Playwright tests together.
 
 See [architecture](docs/architecture.md) for model and validation details and [current state](docs/current-state.md) for the verification snapshot.

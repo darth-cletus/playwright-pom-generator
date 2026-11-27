@@ -9,7 +9,7 @@ import {createDomValidator} from './validation';
 
 const roles = 'button checkbox combobox link textbox searchbox radio listbox slider spinbutton switch tab menuitem menuitemcheckbox menuitemradio';
 const native = 'button,a[href],input:not([type=hidden]),select,textarea,[contenteditable=true]';
-const interactive = native + ',' + roles.split(' ').map(role => `[role~="${role}"]`).join(',');
+export const interactive = native + ',' + roles.split(' ').map(role => `[role~="${role}"]`).join(',');
 const owned = '[data-pom-overlay]';
 
 export const inspectable = (element: Element) => element.isConnected && !element.closest(owned) &&
@@ -61,9 +61,9 @@ export class ElementCollection {
     return {documentKey: this.documentKey, url: location.origin + location.pathname, className: 'GeneratedPage', elements};
   }
 
-  builder(settings: LocatorSettings) {
+  builder(settings: LocatorSettings, scope?: Element) {
     const text = new WeakMap<Element, string>();
-    const validate = createDomValidator(document, text);
+    const validate = createDomValidator(document, text, scope);
     return (element: Element, picked = false) => {
       const metadata = extractMetadata(element, text);
       const {label, tag} = metadata;
@@ -72,7 +72,7 @@ export class ElementCollection {
       const row: ElementModel & {referenceId: string} = {
         id: 'element-' + referenceId.slice(this.documentKey.length + 1), referenceId,
         name: identifier(label + '_' + (action === 'fill' ? 'input' : tag)),
-        label, tag, action, candidates: generateCandidates(element, metadata, settings, validate),
+        label, tag, action, candidates: generateCandidates(element, metadata, settings, validate, scope),
         selected: picked || metadata.defaultSelected, choice: null,
       };
       return {row, metadata};

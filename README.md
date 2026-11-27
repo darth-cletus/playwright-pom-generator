@@ -16,6 +16,8 @@ If Windows PowerShell blocks `npm.ps1`, use `npm.cmd` in each command, for examp
 
 Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, select Load unpacked and choose the generated `dist` directory. Pin the extension. Open a web page, click the toolbar icon to grant temporary active-tab access, then click Scan active page in the side panel. If the panel offers Allow access to this site, click it and approve the browser prompt to scan the site. The browser remembers that site permission. For local files, enable Allow access to file URLs in the extension details or serve the files over localhost.
 
+If the panel reports that extension APIs are unavailable, rebuild, reload the unpacked extension, and reopen the panel from the toolbar. Opening `dist/sidepanel.html` through localhost or as a file runs it outside the extension context.
+
 ## Try the fixture
 
 ```sh
@@ -39,6 +41,12 @@ Open the side panel and choose **Start inspection**. Hover a control, then click
 With focus on the page, press **Enter** to add the current target or **Escape** to stop. Enter leaves editable controls alone. Escape also works in the side panel. The collection lets you rename, reorder, deselect, remove, highlight, and inspect rows. Scans and picks of the same live element share a row. Static targets generate a locator attribute for assertions. A detached row needs to be removed or deselected before generating Python.
 
 Try [the specialty plan fixture](fixtures/inspector.html) over localhost. The three **See plans** buttons share an accessible name. The inspector exposes the ambiguous role locator and the unique test ID alternatives.
+
+## Build reusable components
+
+Scan the page or pick a container in the inspector. Open **Reusable components** and choose **Discover components**, or select an inspected row and choose **Define component root**. Review sampled instances, scoped members, and optional absences before accepting. Names and locator choices can be edited in the definition, and matching page rows can be moved into it.
+
+The **Python preview** supports single-file and package output. **Export Python package** downloads generated pages, component modules, and initialization files as a ZIP. The JSON model records accepted definitions and relationships. Try Dental, Vision, and Life in `fixtures/components.html`. [Component architecture and limits](docs/architecture.md)
 
 ## Development
 
