@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0 (unreleased)
+
+- Added an optional authenticated loopback companion for real Python Playwright locator validation over CDP.
+- Added document and target correlation, match and state evidence, optional trial actions, and cancellable batch validation.
+- Integrated runtime freshness, candidate recommendations, Python export policies, and JSON evidence.
+- Added Python API and live Playwright tests plus an unpacked-extension companion workflow in CI.
+
 ## v0.3.0 (unreleased)
 
 - Added interactive semantic and exact inspection, in-page highlights and tooltips, and DOM hierarchy navigation.

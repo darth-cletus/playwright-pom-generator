@@ -1,3 +1,5 @@
+import {currentEvidence, runtimeRejects, type RuntimeEvidence} from './runtime';
+
 export type Locator =
   | {strategy: 'css'; selector: string}
   | {strategy: 'test-id'; attribute: string; value: string}
@@ -22,6 +24,7 @@ export interface Candidate {
   explanations: string[];
   warnings: string[];
   validation: Validation;
+  runtime?: RuntimeEvidence;
 }
 
 export interface LocatorSettings {
@@ -53,7 +56,12 @@ export function locatorKey(locator: Locator): string {
 }
 
 export function recommendedCandidate(candidates: readonly Candidate[]): Candidate | undefined {
-  return candidates.find(candidate => candidate.validation.status === 'unique-target');
+  return candidates
+    .filter(candidate => !runtimeRejects(candidate.runtime) &&
+      (candidate.validation.status === 'unique-target' || currentEvidence(candidate.runtime)?.status === 'unique-target'))
+    .sort((a, b) => b.score - a.score ||
+      Number(currentEvidence(b.runtime)?.status === 'unique-target') -
+      Number(currentEvidence(a.runtime)?.status === 'unique-target'))[0];
 }
 
 export function selectedCandidate(element: {candidates: Candidate[]; choice: string | null}): Candidate | undefined {

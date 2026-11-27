@@ -118,3 +118,86 @@ On Windows in headless Chromium, each 2,500-control run dispatched 500 CDP mouse
 4. Try exact inspection on the image, a heading, a table row, and the status. Use sibling and child navigation and try Enter. Reorder and remove rows, test selection and deselection, and highlight a prior pick. Verify scrolling, resizing, and detached controls.
 5. Stop using the panel and Escape. Repeat activation, switch tabs, reload the page, close the panel, and reload the extension. Verify the overlays disappear and the page action counter can increment again.
 6. Generate Python, copy it, export it and the JSON model, and use the Python class in an authorized application. Review the existing automatic scan and locator checks above. Record installed Chrome and Edge results separately.
+
+## POM-004 runtime validation acceptance
+
+| Criterion | Status | Evidence |
+| --- | --- | --- |
+| AC-004.01 Architecture | PASS | ADR compares all four options and documents CDP and browser-profile tradeoffs. |
+| AC-004.02 Actual Python Playwright | PASS | The companion constructs and executes real Playwright Locator objects. |
+| AC-004.03 Service startup | PASS | The unpacked-extension test starts the service through the documented module entry point. |
+| AC-004.04 Service shutdown | PASS | The HTTP security test closes the server and service. The CLI handles Ctrl+C. |
+| AC-004.05 Offline workflow | PASS | All POM-002 and POM-003 regression tests run with the companion absent. |
+| AC-004.06 Chromium connection | PASS | Live Python and extension tests attach to an isolated Chromium profile. |
+| AC-004.07 Actionable connection failure | PASS | HTTP test covers an unavailable debugging endpoint. |
+| AC-004.08 Disconnection | PASS | The live suite disconnects the companion and verifies that both browser pages remain open. |
+| AC-004.09 Browser security restrictions | PASS | The service permits an operator-configured loopback port and setup requires a dedicated profile. |
+| AC-004.10 Page correlation | PASS | The live suite discovers the marked document and confirms the intended node. |
+| AC-004.11 Duplicate URLs | PASS | The live test uses two tabs at the same URL and resolves only the one with the marker. |
+| AC-004.12 Stale documents | PASS | Reload removes the marker and the service rejects the prior document. |
+| AC-004.13 Locator construction | PASS | Live tests cover every current strategy. |
+| AC-004.14 Executable input | PASS | Schema tests reject executable strategy names and selector engines. |
+| AC-004.15 Malformed requests | PASS | Contract and HTTP tests cover invalid options, types, marker syntax, and limits. |
+| AC-004.16 Test ID config | PASS | One live request alternates custom and default native test-ID configuration. |
+| AC-004.17 Unique matches | PASS | The Dental test ID returns one match. |
+| AC-004.18 Ambiguous matches | PASS | The repeated role locator returns three matches. |
+| AC-004.19 No match | PASS | The fixture test evaluates a missing CSS ID. |
+| AC-004.20 Wrong target | PASS | The Vision CSS locator returns a unique wrong target while Dental is marked. |
+| AC-004.21 Unverified target | PASS | Disabling target identity evidence returns a unique unverified result. |
+| AC-004.22 Stale element | PASS | Live tests cover DOM replacement in Python and the extension. |
+| AC-004.23 Visibility | PASS | A hidden control remains a unique confirmed match. |
+| AC-004.24 Enabled state | PASS | A disabled control remains a unique confirmed match. |
+| AC-004.25 Editable and checked state | PASS | Live Playwright tests cover readonly and checked input states. |
+| AC-004.26 Trial behavior | PASS | The Dental click trial passes while the application's action counter stays at zero. |
+| AC-004.27 Unsupported trials | PASS | The live suite verifies the explicit fill-trial unsupported result. |
+| AC-004.28 Timestamps and durations | PASS | The live suite checks both fields on a confirmed match. |
+| AC-004.29 Evidence provenance | PASS | Browser and Playwright evidence remain distinct in the model and panel. |
+| AC-004.30 Single candidate validation | PASS | The panel exposes a per-candidate button and the service accepts one candidate. |
+| AC-004.31 Multiple candidates | PASS | The unpacked extension validates every candidate on the Dental row. |
+| AC-004.32 Selected batch | PASS | The unpacked extension validates locators for Dental and Vision as one selected batch. |
+| AC-004.33 Progress | PASS | The panel reports current row and completion totals. |
+| AC-004.34 Cancellation | PASS | The Python protocol test cancels an in-flight request and verifies cleanup. |
+| AC-004.35 Partial failures | PASS | Live Playwright evaluates an invalid CSS selector and still returns the succeeding test-ID result. The panel also preserves earlier rows when later rows fail. |
+| AC-004.36 Bounded operations | PASS | The contract and HTTP tests cover bounded items, timeout inputs, body sizes, and concurrent requests. |
+| AC-004.37 Wrong-target recommendation | PASS | TypeScript ranking test suppresses a fresh wrong target. |
+| AC-004.38 Ambiguous recommendation | PASS | TypeScript ranking and the unpacked extension cover a fresh ambiguous result. |
+| AC-004.39 No-match recommendation | PASS | TypeScript ranking test suppresses a fresh no-match result. |
+| AC-004.40 Manual override | PASS | The dropdown retains the user's ambiguous override in Chromium. |
+| AC-004.41 Manual warning | PASS | The unpacked extension reports the conflicting result and blocks generation. |
+| AC-004.42 Freshness invalidation | PASS | Live tests cover replacement and reload. The panel invalidates on configuration and connection changes. |
+| AC-004.43 Historical evidence | PASS | The extension marks evidence historical after replacement and unit tests cover expiration. |
+| AC-004.44 Python syntax | PASS | Existing browser tests still parse and execute generated Python. |
+| AC-004.45 Evidence export | PASS | The unpacked extension downloads a model containing Playwright evidence. |
+| AC-004.46 Credential-free export | PASS | The extension test checks its pairing token is absent from the JSON file. |
+| AC-004.47 Loopback bind | PASS | The HTTP server binds to 127.0.0.1 only. |
+| AC-004.48 Authentication | PASS | HTTP test denies an invalid bearer token. |
+| AC-004.49 Website isolation | PASS | HTTP test rejects foreign origins and incorrect Host headers. |
+| AC-004.50 Command boundaries | PASS | The service rejects unknown routes and accepts only allowlisted locator arguments. |
+| AC-004.51 Sensitive information | PASS | State evaluation returns booleans. It does not read inputs, cookies, or storage. HTTP logs exclude pairing secrets. |
+| AC-004.52 Marker cleanup | PASS | The unpacked-extension test verifies cleanup after validation and when a marked node is cloned during a lease. Release and lease expiry also cover cancellation and errors. |
+| AC-004.53 Browser ownership | PASS | The live Python test verifies both user-owned pages survive companion disconnection. |
+| AC-004.54 Windows setup | PASS | The companion README documents venv, pairing, profile flags, execution, and shutdown. |
+| AC-004.55 Performance | PASS | The live suite measures candidate and selected-row workloads on Chromium. |
+| AC-004.56 Python unit tests | PASS | Pytest covers protocol, classification, cancellation, and HTTP security. |
+| AC-004.57 Live strategy tests | PASS | Actual Python Playwright exercises all current locator strategies. |
+| AC-004.58 Extension integration | PASS | An unpacked Chromium extension pairs, validates, exports evidence, archives it, and resumes scanning after disconnect. |
+| AC-004.59 Existing TypeScript tests | PASS | The original unit suite passes alongside the runtime tests. |
+| AC-004.60 POM-002 and POM-003 regressions | PASS | The baseline and final browser suites exercise the existing workflows. |
+| AC-004.61 Production extension build | PASS | Strict TypeScript checks and esbuild pass. |
+| AC-004.62 Hosted CI | PASS | The hosted workflow passed the TypeScript build and tests, Ruff, pytest, and the unpacked-extension suite. [GitHub Actions evidence](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46077816340) |
+| AC-004.63 Documentation | PASS | README, companion setup, architecture, roadmap, changelog, ADR, and this matrix are current. |
+| AC-004.64 Threat model | PASS | Architecture documents attacker boundaries, authentication, debugging constraints, and marker limitations. |
+| AC-004.65 Permissions and services | PASS | The existing optional HTTP host permission covers explicit loopback access. The runtime companion is local. |
+
+### Measured performance
+
+A Windows headless Chromium run attached through Python Playwright over loopback CDP. The warmed companion validated 1, 8, 10, and 50 repeated role candidates in 7, 43, 49, and 250 ms, respectively. The 50-candidate workload used two requests. A two-candidate role and test-ID workload on the 2,500-control DOM took 119 ms. Sequential per-row CSS requests with a fresh target marker on that DOM took 87 ms for 10 rows and 462 ms for 50 rows. Measurements include marker operations where applicable, CDP, and companion processing, and exclude the HTTP transport and UI. A disabled control's click trial exercised the 300 ms timeout separately. The suite reports samples without imposing timing thresholds.
+
+### Manual Chrome and Edge acceptance
+
+1. Follow the [companion setup](../companion/README.md). Open the same fixture URL in two tabs in the debugging profile and pair the extension in that profile. Verify a missing endpoint and an incorrect pairing token produce actionable errors.
+2. Run `python -m http.server 8000 --bind 127.0.0.1` from the repository root. Open `http://127.0.0.1:8000/fixtures/inspector.html`. Inspect Dental's **See plans** button and stop picking. Validate all candidates. The role locator should show three matches and confirm Dental is among them. The native test ID should show one confirmed match.
+3. Clear **Verify intended element** and validate the same ID to see one unverified match. Restore identity verification. In the local fixture, move Dental's stable HTML ID to Vision without replacing Dental, then validate the old CSS ID attached to Dental's row to see a wrong-target result. Remove that ID to see no match. Refresh the fixture afterward.
+4. Validate a disabled control, optionally try a click trial, and compare state with count and identity. Verify the page action count stays unchanged. The Python fixture suite also verifies a hidden locator and read-only and checked inputs.
+5. Validate several selected elements, cancel partway, and review progress. Choose a valid candidate and export Python and JSON. Confirm the JSON distinguishes both evidence sources and contains no pairing token.
+6. Replace a picked node and reload. Confirm old evidence is historical. Disconnect and stop the companion with Ctrl+C. Verify standalone scan, pick, highlight, and generation still work. Record Chrome and Edge acceptance separately.

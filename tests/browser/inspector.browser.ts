@@ -1,4 +1,5 @@
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
+import {randomBytes} from 'node:crypto';
 import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {createServer, type Server} from 'node:http';
 import {tmpdir} from 'node:os';
@@ -15,12 +16,22 @@ let app: Page;
 let panel: Page;
 let extensionUrl: string;
 let fixtureUrl: string;
+let debugPort: number;
 const panelButton = (name: string) => panel.getByRole('button', {name, exact: true});
 const clickPanel = (name: string) => panelButton(name).evaluate((element: HTMLButtonElement) => element.click());
 const section = () => panel.getByRole('region', {name: 'Element inspector'});
 const target = () => section().locator('article strong');
 const field = () => panel.getByRole('textbox', {name: 'Python element name'});
 const python = process.env.POM_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3');
+
+async function freePort() {
+  const listener = createServer();
+  await new Promise<void>(done => listener.listen(0, '127.0.0.1', done));
+  const address = listener.address();
+  await new Promise<void>((done, reject) => listener.close(error => error ? reject(error) : done()));
+  if (!address || typeof address === 'string') throw Error('No loopback port');
+  return address.port;
+}
 
 beforeAll(async () => {
   const fixture = await readFile(new URL('../../fixtures/inspector.html', import.meta.url));
@@ -42,9 +53,11 @@ beforeAll(async () => {
   // because browser permission prompts are outside Playwright's page APIs.
   manifest.host_permissions = ['http://127.0.0.1/*'];
   await writeFile(manifestPath, JSON.stringify(manifest));
+  debugPort = await freePort();
   context = await chromium.launchPersistentContext(join(temp, 'profile'), {
     channel: 'chromium', headless: true, viewport: {width: 1050, height: 760},
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
+      `--remote-debugging-port=${debugPort}`],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   extensionUrl = worker.url().replace(/\/background\.js$/, '/sidepanel.html');
@@ -330,6 +343,83 @@ it('shows actionable guidance for unsupported browser pages', async () => {
   await clickPanel('Start inspection');
   await expect.poll(() => panel.getByText(/Open an HTTP or HTTPS page/).count()).toBe(1);
 });
+
+it('pairs the actual extension with Python and validates selected locator evidence over CDP', async () => {
+  const port = await freePort();
+  const token = randomBytes(32).toString('base64url');
+  const extensionId = new URL(extensionUrl).hostname;
+  const service = spawn(python, ['-m', 'pom_validator.cli', 'serve', '--port', String(port),
+    '--debug-port', String(debugPort), '--extension-id', extensionId], {
+    env: {...process.env, POM_VALIDATOR_TOKEN: token}, stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  const exited = new Promise<void>(resolve => service.once('close', () => resolve()));
+  let serviceLog = '';
+  service.stderr.on('data', (data: Buffer) => {serviceLog += data.toString();});
+  try {
+    await expect.poll(() => serviceLog, {timeout: 7000}).toContain('service_ready');
+    await panel.getByText('Playwright runtime validation', {exact: true}).click();
+    await panel.getByLabel('Companion loopback port').fill(String(port));
+    await panel.getByLabel('Pairing token').fill(token);
+    await panelButton('Pair with companion').click();
+    await expect.poll(() => panel.getByText(/Companion paired/).count(), {timeout: 7000}).toBe(1);
+    await clickPanel('Connect browser');
+    await expect.poll(() => panel.getByText(/Browser connected/).count(), {timeout: 7000}).toBe(1);
+    await app.bringToFront();
+    await start();
+    await app.getByTestId('dental-plans').click();
+    await expect.poll(() => field().count()).toBe(1);
+    await app.getByTestId('vision-plans').click();
+    await expect.poll(() => field().count()).toBe(2);
+    await clickPanel('Stop inspection');
+    const row = panel.locator('article').filter({has: field()}).first();
+    const picker = row.getByLabel('Locator', {exact: true});
+    await row.getByRole('button', {name: 'Validate current locator'}).evaluate((button: HTMLButtonElement) => button.click());
+    await expect.poll(() => row.getByText(/Current · unique-target · 1 matches/).count(), {timeout: 7000}).toBe(1);
+    await row.getByRole('button', {name: 'Validate all candidates'}).evaluate((button: HTMLButtonElement) => button.click());
+    await expect.poll(() => picker.locator('option').allTextContents()).toEqual(expect.arrayContaining([
+      expect.stringContaining('Playwright: ambiguous'),
+    ]));
+    const labels = await picker.locator('option').allTextContents();
+    await picker.selectOption({index: labels.findIndex(label => label.includes(' · role · '))});
+    expect(await row.getByText(/Current · ambiguous · 3 matches · identity confirmed/).count()).toBe(1);
+    expect(await panel.getByText(/Playwright found ambiguous/).count()).toBe(1);
+    if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+      const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+      await mkdir(output, {recursive: true});
+      await row.screenshot({path: join(output, 'runtime-validation.png')});
+    }
+    await picker.selectOption('');
+    await clickPanel('Validate selected elements');
+    await expect.poll(() => panel.getByText(/Validated 2 element/).count()).toBe(1);
+    expect(await panel.locator('textarea').inputValue()).toContain('page.get_by_test_id');
+    const exported = await download('Export JSON');
+    expect(exported).toContain('"method": "playwright"');
+    expect(exported).not.toContain(token);
+    const markers = await app.evaluate(() => [...document.querySelectorAll('*')].some(node =>
+      node.getAttributeNames().some(name => name.startsWith('data-pom-validation-'))));
+    expect(markers).toBe(false);
+    const snapshot: PageModel = JSON.parse(exported);
+    const lease = await panel.evaluate(async ({documentKey, referenceId}) => {
+      const [active] = await chrome.tabs.query({active: true, currentWindow: true});
+      const marker = await chrome.tabs.sendMessage(active.id!, {type: 'POM_RUNTIME_MARK', documentKey, referenceId});
+      return {tab: active.id!, attribute: marker.attribute};
+    }, {documentKey: snapshot.documentKey, referenceId: snapshot.elements[0].referenceId});
+    await app.locator('#dental-trigger').evaluate(node => node.replaceWith(node.cloneNode(true)));
+    expect(await panel.evaluate(lease => chrome.tabs.sendMessage(lease.tab, {
+      type: 'POM_RUNTIME_RELEASE', attribute: lease.attribute,
+    }), lease)).toBe(false);
+    expect(await app.locator(`[${lease.attribute}-target]`).count()).toBe(0);
+    await expect.poll(() => row.getByText(/Historical · unique-target/).count()).toBe(1);
+    await clickPanel('Disconnect browser');
+    await expect.poll(() => panel.getByText(/Companion paired/).count()).toBe(1);
+    await clickPanel('Scan active page');
+    await expect.poll(() => field().count()).toBeGreaterThan(1);
+    expect(await app.getByTestId('dental-plans').count()).toBe(1);
+  } finally {
+    service.kill();
+    await exited;
+  }
+}, 40_000);
 
 it('releases page listeners and overlay when the extension reloads', async () => {
   await start();
