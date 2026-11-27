@@ -288,7 +288,7 @@ A Windows headless Chromium run attached through Python Playwright over loopback
 | AC-005.80 Existing Python tests continue to pass where applicable. | PASS | The original companion tests pass with added scoped cases. |
 | AC-005.81 Existing POM-002 through POM-004 functionality remains operational. | PASS | All prior feature suites remain in the final regression run. |
 | AC-005.82 The production browser extension builds successfully. | PASS | TypeScript checking and bundle generation pass. |
-| AC-005.83 GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted run pending. |
+| AC-005.83 GitHub Actions workflows remain functional. | PASS | Hosted TypeScript, Python, and unpacked Chromium checks passed. [Hosted run](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46082106616) |
 | AC-005.84 Documentation accurately reflects the implementation. | PASS | README, ADR, architecture, changelog, current state, and matrix describe v0.5. |
 | AC-005.85 No unjustified extension permissions or external services are introduced. | PASS | Production manifest permissions remain unchanged and the companion stays local. |
 
@@ -296,7 +296,16 @@ A Windows headless Chromium run attached through Python Playwright over loopback
 
 The Chromium test observed one three-instance plan definition for Dental, Vision, and Life. The notice was outside that group. The promotion was present for Dental and optional for the other two. The companion verified one intended root and one intended button in each card. A separate live check rejected a Vision root while Dental was marked. A three-root chain returned the root ambiguity without evaluating children.
 
-On Windows headless Chromium, discovery reached the panel in 127 ms on one run with 650 extra candidate boundaries. Timing includes extension messaging, panel rendering, and test polling. The fixture supports `?large=1` for a manual run. The suite emits the observed timing without imposing a threshold.
+Windows headless Chromium measurements from the detector benchmark:
+
+| Fixture | Candidate roots | Similarity comparisons | Groups | Representative roots | Collection count | Detector time |
+| --- | --- | --- | --- | --- | --- | --- |
+| Three cards | 4 | 2 | 1 | 3 | 3 | 3.3 ms |
+| 20 cards | 21 | 19 | 1 | 20 | 20 | 3.9 ms |
+| 100 cards | 101 | 99 | 1 | 30 | 100 | 11.9 ms |
+| 120 table rows | 120 | 119 | 1 | 30 | 120 | 17.1 ms |
+
+The detector timer covers discovery and candidate construction inside Chromium. Candidate counts can include an enclosing container. Instance observations remain capped while a verified collection retains its full observed count. On the nested plan fixture with 650 extra boundaries, discovery reached the panel in 124 ms. The three-card CDP validation batch reached the panel in 2,015 ms in a separate run. Both panel timings include messaging and test polling. The fixture supports `?large=1` for a manual run. The browser suite logs observations without imposing a timing threshold. Memory use was not measured.
 
 ### Manual Chrome and Edge acceptance
 

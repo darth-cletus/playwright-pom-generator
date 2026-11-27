@@ -60,7 +60,8 @@ function rootSelectors(roots: readonly Element[]): string[] {
 }
 
 export function describeComponent(roots: Element[], collection: ElementCollection,
-  settings: LocatorSettings, confidence: number, slotCache?: WeakMap<Element, Map<string, Element>>): ComponentDefinition {
+  settings: LocatorSettings, confidence: number, slotCache?: WeakMap<Element, Map<string, Element>>,
+  observedRoots = roots): ComponentDefinition {
   const pageBuilder = collection.builder(settings);
   const text = new WeakMap<Element, string>();
   const match = createDomMatcher(document, text);
@@ -129,16 +130,17 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
       selected, optional, observations}];
   });
   let group: ComponentDefinition['collection'];
-  if (roots.length > 1) {
-    const parent = roots[0].parentElement;
-    const parentLocator = parent && roots.every(root => root.parentElement === parent)
+  if (observedRoots.length > 1) {
+    const parent = observedRoots[0].parentElement;
+    const parentLocator = parent && observedRoots.every(root => root.parentElement === parent)
       ? componentRootCandidate(pageBuilder(parent, true).row)?.locator : undefined;
-    const selectors = rootSelectors(roots).map((selector): Locator => ({strategy: 'css', selector}));
+    const selectors = rootSelectors(observedRoots).map((selector): Locator => ({strategy: 'css', selector}));
     const alternatives = [...selectors, ...selectors.flatMap(child => parentLocator ?
       [{strategy: 'chain', root: parentLocator, child} as Locator] : [])];
     const locator = alternatives.find(candidate => {
       const results = match(candidate);
-      return results.length === roots.length && roots.every(root => results.includes(root));
+      const found = new Set(results);
+      return found.size === observedRoots.length && observedRoots.every(root => found.has(root));
     });
     if (locator) {
       const keys = instances.flatMap(instance => instance.key ? [instance.key] : []);
@@ -147,7 +149,7 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
           const results = match({strategy: 'filter', base: locator, has: {strategy: 'role', role: 'heading', name: instance.key!}});
           return results.length === 1 && results[0] === roots[index];
         });
-      group = {locator, count: roots.length, parameter: unique ? {name: 'name', role: 'heading'} : undefined};
+      group = {locator, count: observedRoots.length, parameter: unique ? {name: 'name', role: 'heading'} : undefined};
       if (unique) instances.forEach((instance, index) => {
         const candidate: Locator = {strategy: 'filter', base: locator,
           has: {strategy: 'role', role: 'heading', name: instance.key!}};
@@ -164,24 +166,29 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
     className: title.replace(/\s+/g, '') + instances[0].root.id.replace(/\D/g, ''),
     confidence, signature: fingerprint(roots[0], membersByRoot[0]), members, instances, collection: group, children: [],
     reasons: roots.length === 1 ? ['Explicitly selected root.'] : [
-      `${roots.length} sibling containers with the same boundary family.`,
+      `${observedRoots.length} sibling containers with the same boundary family. ${roots.length} sampled.`,
       `Lowest structural similarity ${Math.round(confidence * 100)}%.`,
       group ? 'Collection locator matches exactly these roots in the current document.' : 'No exact collection locator was verified.',
     ],
   };
 }
 
-export function discoverComponents(collection: ElementCollection, settings: LocatorSettings): ComponentDefinition[] {
+export function discoverComponents(collection: ElementCollection, settings: LocatorSettings,
+  measure?: (counts: {boundaries: number; candidateRoots: number; comparisons: number; groups: number}) => void): ComponentDefinition[] {
   const parents = new WeakMap<Element, Map<string, {roots: Element[]; signature: string[]; quality: number}[]>>();
   const all: {roots: Element[]; signature: string[]; quality: number}[] = [];
   const cache = new WeakMap<Element, Map<string, Element>>();
   let examined = 0;
+  let candidateRoots = 0;
+  let comparisons = 0;
   for (const root of document.querySelectorAll(boundaries)) {
-    if (++examined > boundaryLimit) break;
+    if (examined >= boundaryLimit) break;
+    examined++;
     const parent = root.parentElement;
     if (!parent || !inspectable(root) || !visible(root)) continue;
     const entries = slots(root);
     if (entries.size < 2 || ![...entries.values()].some(element => element.matches(interactive))) continue;
+    candidateRoots++;
     cache.set(root, entries);
     const signature = fingerprint(root, entries);
     const className = Array.from(root.classList).find(name => !instability(name)) ?? '';
@@ -189,12 +196,13 @@ export function discoverComponents(collection: ElementCollection, settings: Loca
     let map = parents.get(parent);
     if (!map) {map = new Map(); parents.set(parent, map);}
     const groups = map.get(family) ?? [];
-    const similar = groups.find(group => signatureSimilarity(group.signature, signature) >= 0.8);
+    const similar = groups.find(group => {
+      comparisons++;
+      return signatureSimilarity(group.signature, signature) >= 0.8;
+    });
     if (similar) {
-      if (similar.roots.length < instanceLimit) {
-        similar.roots.push(root);
-        similar.quality = Math.min(similar.quality, signatureSimilarity(similar.signature, signature));
-      }
+      similar.roots.push(root);
+      similar.quality = Math.min(similar.quality, signatureSimilarity(similar.signature, signature));
     } else {
       const group = {roots: [root], signature, quality: 1};
       groups.push(group);
@@ -202,9 +210,12 @@ export function discoverComponents(collection: ElementCollection, settings: Loca
       all.push(group);
     }
   }
-  return all.filter(group => group.roots.length > 1)
+  const definitions = all.filter(group => group.roots.length > 1)
     .sort((a, b) => b.quality * b.roots.length - a.quality * a.roots.length)
-    .slice(0, groupLimit).map(group => describeComponent(group.roots, collection, settings, group.quality, cache));
+    .slice(0, groupLimit).map(group => describeComponent(
+      group.roots.slice(0, instanceLimit), collection, settings, group.quality, cache, group.roots));
+  measure?.({boundaries: examined, candidateRoots, comparisons, groups: definitions.length});
+  return definitions;
 }
 
 export function relativeComponentRoot(parents: Element[], children: Element[], collection: ElementCollection,

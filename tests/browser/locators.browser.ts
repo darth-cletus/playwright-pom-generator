@@ -271,3 +271,33 @@ it('keeps a panel override after renaming or toggling selection and restores aut
   await root.getByLabel('Locator', {exact: true}).selectOption('');
   expect(await root.locator('textarea').inputValue()).toContain('self.contact_email = page.get_by_test_id');
 });
+
+it('measures repeated cards and table rows while retaining the representative root limit', async () => {
+  const samples = await page.evaluate(settings => {
+    const {discoverComponents, ElementCollection} = window.engine;
+    const measurements = [];
+    for (const [kind, size] of [['cards', 3], ['cards', 20], ['cards', 100], ['table', 120]] as const) {
+      if (kind === 'cards') {
+        document.body.innerHTML = '<section>' + Array.from({length: size}, (_, index) =>
+          `<article data-slot="plan" data-testid="plan-${index}"><h2>Plan ${index}</h2><p>Coverage</p><button>See plans</button></article>`
+        ).join('') + '</section>';
+      } else {
+        document.body.innerHTML = '<table><tbody>' + Array.from({length: size}, (_, index) =>
+          `<tr data-testid="row-${index}"><td>Plan ${index}</td><td><button>Details</button></td></tr>`
+        ).join('') + '</tbody></table>';
+      }
+      let counts = {boundaries: 0, candidateRoots: 0, comparisons: 0, groups: 0};
+      const started = performance.now();
+      const actual = discoverComponents(new ElementCollection(), settings, value => {counts = value;});
+      measurements.push({kind, size, ...counts, samples: actual[0]?.instances.length ?? 0,
+        collectionCount: actual[0]?.collection?.count,
+        milliseconds: Number((performance.now() - started).toFixed(1))});
+    }
+    return measurements;
+  }, defaultSettings);
+  console.info('Component structure benchmark', JSON.stringify(samples));
+  expect(samples.map(sample => sample.samples)).toEqual([3, 20, 30, 30]);
+  expect(samples.map(sample => sample.groups)).toEqual([1, 1, 1, 1]);
+  expect(samples.map(sample => sample.collectionCount)).toEqual([3, 20, 100, 120]);
+  expect(samples.map(sample => sample.comparisons)).toEqual([2, 19, 99, 119]);
+}, 15_000);

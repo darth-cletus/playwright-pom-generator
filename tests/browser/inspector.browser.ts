@@ -499,10 +499,14 @@ it('pairs the actual extension with Python and validates selected locator eviden
     const component = panel.locator('article').filter({hasText: 'Dental, Vision, Life'});
     await component.getByRole('button', {name: 'Accept component'}).click();
     await panel.getByText('Article component · definition', {exact: true}).click();
+    const scopedStarted = performance.now();
     await clickPanel('Validate component with Playwright');
     await panel.getByText('Playwright component evidence', {exact: true}).click({timeout: 12_000});
     await expect.poll(() => panel.getByText(/see_plans_button.*unique-target.*root 1, confirmed/).count(),
       {timeout: 12_000}).toBe(3);
+    await expect.poll(() => panel.getByText(/^Validated \d+ element\(s\) with Python Playwright\.$/).count(),
+      {timeout: 15_000}).toBe(1);
+    console.info(`Three-card scoped validation batch reached the panel in ${Math.round(performance.now() - scopedStarted)} ms.`);
     if (process.env.POM_INSPECTOR_SCREENSHOTS) {
       await panel.screenshot({path: join(process.env.POM_INSPECTOR_SCREENSHOTS, 'components-runtime.png')});
     }
