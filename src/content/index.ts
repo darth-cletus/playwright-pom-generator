@@ -1,58 +1,65 @@
-import {identifier} from '../core/python-names';
-import {defaultSettings, type LocatorSettings} from '../core/locator';
-import type {PageModel} from '../core/model';
-import {generateCandidates} from './candidates';
-import {extractMetadata} from './metadata';
-import {createDomValidator} from './validation';
+import {inspectorPort, readSettings, type InspectorEvent} from '../core/inspector';
+import {defaultSettings} from '../core/locator';
+import {ElementCollection} from './elements';
+import {Highlights} from './highlight';
+import {Inspector} from './inspector';
 
-const discovery = 'button,a[href],input:not([type=hidden]),select,textarea,[role~=button],[role~=checkbox],[role~=combobox],[role~=link],[role~=textbox],[role~=searchbox],[role~=radio],[role~=listbox],[role~=slider],[role~=spinbutton],[role~=switch],[role~=tab],[role~=menuitem],[contenteditable=true]';
-const nodes = new Map<string, Element>();
-let overlay: HTMLElement | undefined;
+function install() {
+  const collection = new ElementCollection();
+  const highlights = new Highlights();
+  let active: {port: chrome.runtime.Port; inspector: Inspector} | undefined;
 
-function scan(settings: LocatorSettings): PageModel {
-  nodes.clear();
-  const elements: PageModel['elements'] = [];
-  const text = new WeakMap<Element, string>();
-  const validate = createDomValidator(document, text);
-  for (const element of document.querySelectorAll(discovery)) {
-    if (!(element instanceof HTMLElement) || !element.getClientRects().length ||
-      ['hidden', 'collapse'].includes(getComputedStyle(element).visibility)) continue;
-    const metadata = extractMetadata(element, text);
-    const {label, action, tag, defaultSelected} = metadata;
-    const candidates = generateCandidates(element, metadata, settings, validate);
-    const id = String(elements.length);
-    nodes.set(id, element);
-    elements.push({
-      id, name: identifier(label + '_' + (action === 'fill' ? 'input' : tag)),
-      label, tag, action, candidates, selected: defaultSelected, choice: null,
-    });
-  }
-  return {url: location.origin + location.pathname, className: 'GeneratedPage', elements};
-}
-
-function highlight(id: string) {
-  overlay?.remove();
-  const element = nodes.get(id);
-  if (!element?.isConnected) return {ok: false};
-  element.scrollIntoView({block: 'center'});
-  const rect = element.getBoundingClientRect();
-  const box = document.createElement('div');
-  Object.assign(box.style, {
-    position: 'fixed', left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px',
-    height: rect.height + 'px', border: '3px solid #2563eb', pointerEvents: 'none',
-    zIndex: '2147483647', boxSizing: 'border-box',
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id && sender.id !== chrome.runtime.id) return;
+    if (message?.type === 'POM_SCAN') {
+      const settings = message.settings === undefined ? defaultSettings : readSettings(message.settings);
+      if (settings) {
+        const page = collection.scan(settings);
+        const staleIds = Array.isArray(message.tracked) ? message.tracked.filter((id: unknown) =>
+          typeof id === 'string' && id.startsWith(collection.documentKey + ':') && !collection.get(id)) : [];
+        reply({...page, staleIds});
+      }
+    } else if (message?.type === 'POM_HIGHLIGHT' && typeof message.id === 'string') {
+      const target = collection.get(message.id);
+      if (target) highlights.flash(target);
+      reply({ok: Boolean(target)});
+    }
   });
-  document.documentElement.append(box);
-  overlay = box;
-  setTimeout(() => box.remove(), 1800);
-  return {ok: true};
+
+  chrome.runtime.onConnect.addListener(port => {
+    if (port.name !== inspectorPort || (port.sender?.id && port.sender.id !== chrome.runtime.id)) return;
+    if (active) {
+      active.inspector.stop('Inspection moved to another panel.');
+      active.port.disconnect();
+    }
+    const emit = (event: InspectorEvent) => {
+      try {
+        port.postMessage(event);
+      } catch {
+        inspector.stop();
+      }
+    };
+    const inspector = new Inspector(collection, highlights, emit);
+    active = {port, inspector};
+    const receive = (value: unknown) => {
+      try {
+        inspector.receive(value);
+      } catch {
+        inspector.stop();
+        emit({type: 'error', message: 'The inspector could not process this target. Start inspection again.'});
+      }
+    };
+    port.onMessage.addListener(receive);
+    port.onDisconnect.addListener(() => {
+      port.onMessage.removeListener(receive);
+      inspector.stop();
+      if (active?.port === port) active = undefined;
+    });
+  });
 }
 
 const state = globalThis as typeof globalThis & {__pomInstalled?: boolean};
 if (!state.__pomInstalled) {
   state.__pomInstalled = true;
-  chrome.runtime.onMessage.addListener((message, _sender, reply) => {
-    if (message.type === 'POM_SCAN') reply(scan(message.settings ?? defaultSettings));
-    else if (message.type === 'POM_HIGHLIGHT') reply(highlight(message.id));
-  });
+  install();
 }

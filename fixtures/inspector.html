@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Specialty insurance plans</title>
+<style>
+  body {font: 16px system-ui; margin: 24px}
+  .plans {display: flex; gap: 16px; flex-wrap: wrap}
+  .card {border: 1px solid #aaa; padding: 16px; width: 160px}
+  button {padding: 8px}
+  svg {width: 18px; height: 18px; vertical-align: middle}
+  .scroll {height: 120px; overflow: auto; border: 1px solid}
+  .space {height: 140px}
+  .fixed {position: fixed; right: 20px; top: 12px}
+  .transformed {transform: translateX(12px) rotate(4deg)}
+</style>
+<main>
+  <h1>Specialty insurance plans</h1>
+  <section class="plans" aria-label="Plans">
+    <article class="card" data-testid="dental-card"><h2>Dental</h2><button type="button" id="dental-trigger" aria-describedby="plan-help" data-testid="dental-plans"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M1 8h14" stroke="currentColor"/></svg><span>See plans</span></button></article>
+    <article class="card" data-testid="vision-card"><h2>Vision</h2><button type="button" data-testid="vision-plans"><span>See plans</span></button></article>
+    <article class="card" data-testid="life-card"><h2>Life</h2><button type="button" data-testid="life-plans"><span>See plans</span></button></article>
+  </section>
+  <p id="plan-help">Compare coverage options.</p>
+  <p role="status" id="actions">0</p>
+  <form>
+    <label for="account">Account <span>password</span></label>
+    <input id="account" type="password">
+    <input type="hidden" value="fixture-sensitive-hidden">
+    <button type="button" disabled>Disabled</button>
+  </form>
+  <a id="image-link" href="#plan-help"><img alt="Coverage chart" width="60" height="40"></a>
+  <div role="switch" tabindex="0" aria-checked="false">Updates</div>
+  <div class="scroll"><div class="space"></div><table><tr id="coverage-row"><td>Coverage</td></tr></table><div class="space"></div></div>
+  <button class="fixed transformed" type="button">Contact</button>
+  <dialog aria-label="Plan options"><p>Options</p></dialog>
+  <div id="dynamic"></div>
+</main>
+<script>
+  let actions = 0;
+  for (const button of document.querySelectorAll('.card button')) {
+    for (const event of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click']) {
+      button.addEventListener(event, () => {
+        document.getElementById('actions').textContent = String(++actions);
+      });
+    }
+  }
+  if (new URLSearchParams(location.search).has('large')) {
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < 2500; index++) {
+      const button = document.createElement('button');
+      button.id = 'perf-' + index;
+      button.textContent = 'Fixture control ' + index;
+      fragment.append(button);
+    }
+    document.body.append(fragment);
+  }
+</script>
+</html>

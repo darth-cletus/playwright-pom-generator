@@ -1,0 +1,328 @@
+import {spawnSync} from 'node:child_process';
+import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {createServer, type Server} from 'node:http';
+import {tmpdir} from 'node:os';
+import {dirname, join, resolve} from 'node:path';
+import {chromium, type BrowserContext, type Page} from 'playwright';
+import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
+import type {PageModel} from '../../src/core/model';
+import {defaultSettings} from '../../src/core/locator';
+
+let context: BrowserContext;
+let server: Server;
+let temp: string;
+let app: Page;
+let panel: Page;
+let extensionUrl: string;
+let fixtureUrl: string;
+const panelButton = (name: string) => panel.getByRole('button', {name, exact: true});
+const clickPanel = (name: string) => panelButton(name).evaluate((element: HTMLButtonElement) => element.click());
+const section = () => panel.getByRole('region', {name: 'Element inspector'});
+const target = () => section().locator('article strong');
+const field = () => panel.getByRole('textbox', {name: 'Python element name'});
+const python = process.env.POM_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3');
+
+beforeAll(async () => {
+  const fixture = await readFile(new URL('../../fixtures/inspector.html', import.meta.url));
+  const login = await readFile(new URL('../../fixtures/login.html', import.meta.url));
+  server = createServer((request, response) => {
+    response.setHeader('Content-Type', 'text/html; charset=utf-8');
+    response.end(request.url === '/login' ? login : fixture);
+  });
+  await new Promise<void>(resolveListening => server.listen(0, '127.0.0.1', resolveListening));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw Error('Fixture did not bind to a TCP port');
+  fixtureUrl = `http://127.0.0.1:${address.port}`;
+  temp = await mkdtemp(join(tmpdir(), 'pom-inspector-'));
+  const extension = join(temp, 'extension');
+  await cp(resolve('dist'), extension, {recursive: true});
+  const manifestPath = join(extension, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  // The extension is loaded normally. Pregrant only the loopback fixture host
+  // because browser permission prompts are outside Playwright's page APIs.
+  manifest.host_permissions = ['http://127.0.0.1/*'];
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  context = await chromium.launchPersistentContext(join(temp, 'profile'), {
+    channel: 'chromium', headless: true, viewport: {width: 1050, height: 760},
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+  });
+  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  extensionUrl = worker.url().replace(/\/background\.js$/, '/sidepanel.html');
+});
+
+beforeEach(async () => {
+  const old = context.pages();
+  app = await context.newPage();
+  app.setDefaultTimeout(4000);
+  panel = await context.newPage();
+  for (const page of old) await page.close();
+  panel.setDefaultTimeout(4000);
+  await app.goto(fixtureUrl);
+  await panel.goto(extensionUrl);
+  await app.bringToFront();
+  await panelButton('Start inspection').waitFor();
+  await expect.poll(() => panelButton('Start inspection').isEnabled()).toBe(true);
+});
+
+afterAll(async () => {
+  await context?.close();
+  server?.close();
+  if (temp && dirname(resolve(temp)) === resolve(tmpdir())) await rm(temp, {recursive: true, force: true});
+});
+
+async function start() {
+  await clickPanel('Start inspection');
+  await expect.poll(() => section().getByRole('status').textContent()).toContain('Inspector active');
+}
+
+async function download(name: string) {
+  const event = panel.waitForEvent('download');
+  await clickPanel(name);
+  const file = await (await event).path();
+  if (!file) throw Error('No exported file');
+  return readFile(file, 'utf8');
+}
+
+it('inspects repeated plans in the actual extension and preserves edits across duplicate picks', async () => {
+  await start();
+  const dental = app.getByTestId('dental-plans');
+  await dental.locator('svg').hover();
+  await expect.poll(() => target().textContent()).toContain('button · button · See plans');
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(1);
+  expect(await dental.locator('span').evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return document.elementFromPoint(rect.left + 3, rect.top + 3) === node;
+  })).toBe(true);
+  await section().getByText('Target locators', {exact: true}).click();
+  expect(await section().getByText(/Role and accessible name.*Ambiguous/).count()).toBeGreaterThan(0);
+  if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+    const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+    await mkdir(output, {recursive: true});
+    await app.screenshot({path: join(output, 'inspector-page.png')});
+    await panel.screenshot({path: join(output, 'inspector-panel.png')});
+  }
+  await clickPanel('Parent');
+  await expect.poll(() => target().textContent()).toContain('article');
+  await clickPanel('Add target');
+  await expect.poll(() => field().count()).toBe(1);
+  await clickPanel('Original target');
+  await expect.poll(() => target().textContent()).toContain('See plans');
+  await dental.locator('span').click();
+  await expect.poll(() => field().count()).toBe(2);
+  expect(await app.locator('#actions').textContent()).toBe('0');
+  await field().nth(1).fill('dental_button');
+  const row = panel.locator('article').filter({has: field()}).nth(1);
+  const picker = row.getByLabel('Locator', {exact: true});
+  const validCss = await picker.locator('option').allTextContents();
+  const ambiguous = validCss.findIndex(label => label.includes(' · role · ') && label.includes('Ambiguous'));
+  expect(ambiguous).toBeGreaterThan(-1);
+  await picker.selectOption({index: ambiguous});
+  expect(await panel.getByText('Choose a locator that uniquely matches dental_button').count()).toBe(1);
+  const index = validCss.findIndex(label => label.includes(' · css · ') && label.includes('Unique target'));
+  expect(index).toBeGreaterThan(-1);
+  await picker.selectOption({index});
+  const override = await picker.inputValue();
+  await dental.locator('span').click();
+  await expect.poll(() => panel.getByText('Element already in collection.').count()).toBe(1);
+  expect(await field().count()).toBe(2);
+  expect(await field().nth(1).inputValue()).toBe('dental_button');
+  expect(await picker.inputValue()).toBe(override);
+  await app.getByTestId('vision-plans').locator('span').click();
+  await expect.poll(() => field().count()).toBe(3);
+  await app.keyboard.press('Escape');
+  await expect.poll(() => section().getByRole('status').textContent()).toContain('Escape');
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(0);
+  await dental.click();
+  expect(Number(await app.locator('#actions').textContent())).toBeGreaterThan(0);
+  const exported: PageModel = JSON.parse(await download('Export JSON'));
+  expect(exported.elements.map(element => element.action)).toEqual(['assert', 'click', 'click']);
+  expect(exported.elements[1].choice).toBe(override);
+  const code = await download('Export Python');
+  expect(code).toContain('def click_dental_button');
+  expect(code).not.toContain('def assert_');
+  const parsed = spawnSync(python, ['-c', 'import ast, sys; ast.parse(sys.stdin.buffer.read().decode("utf-8"))'],
+    {input: code, encoding: 'utf8'});
+  expect(parsed.status, parsed.stderr || parsed.error?.message).toBe(0);
+  for (const element of exported.elements) {
+    const selected = element.choice ? element.candidates.find(candidate => candidate.id === element.choice) : element.candidates[0];
+    const locator = selected!.locator;
+    const match = locator.strategy === 'test-id' ? app.getByTestId(locator.value) :
+      locator.strategy === 'css' ? app.locator(locator.selector) : null;
+    expect(await match?.count()).toBe(1);
+  }
+}, 25_000);
+
+it('handles exact and semantic targets, hierarchy, live replacement and panel closure', async () => {
+  await app.locator('#account').fill('fixture-sensitive-password');
+  await start();
+  await app.locator('label span').hover();
+  await expect.poll(() => target().textContent()).toContain('input');
+  await clickPanel('Add target');
+  await expect.poll(() => field().count()).toBe(1);
+  expect(await download('Export JSON')).not.toContain('fixture-sensitive');
+  await clickPanel('Remove all elements');
+  await app.locator('#image-link img').hover();
+  await expect.poll(() => target().textContent()).toContain('a · link');
+  await section().locator('select').first().selectOption('exact');
+  await expect.poll(() => target().textContent()).toContain('img · img');
+  await app.getByTestId('dental-plans').locator('svg').hover({position: {x: 2, y: 2}});
+  await expect.poll(() => target().textContent()).toContain('svg');
+  await clickPanel('Next sibling');
+  await expect.poll(() => target().textContent()).toContain('span');
+  await clickPanel('Previous sibling');
+  await expect.poll(() => target().textContent()).toContain('svg');
+  await clickPanel('Parent');
+  await expect.poll(() => target().textContent()).toContain('button');
+  await clickPanel('Inspect child');
+  await expect.poll(() => target().textContent()).toContain('svg');
+  await app.evaluate(() => {
+    const node = document.createElement('button');
+    node.id = 'dynamic-pick';
+    node.textContent = 'Dynamic';
+    document.querySelector('#dynamic')!.append(node);
+  });
+  const dynamic = app.locator('#dynamic-pick');
+  await dynamic.evaluate((node: HTMLButtonElement) => node.click());
+  expect(await field().count()).toBe(0);
+  await app.locator('#account').blur();
+  await dynamic.hover();
+  await expect.poll(() => target().textContent()).toContain('Dynamic');
+  await app.keyboard.press('Enter');
+  await expect.poll(() => field().count()).toBe(1);
+  const old = JSON.parse(await download('Export JSON')) as PageModel;
+  await dynamic.evaluate(node => node.replaceWith(node.cloneNode(true)));
+  await expect.poll(() => panel.getByText('Detached element.', {exact: false}).count()).toBe(1);
+  await dynamic.click();
+  await expect.poll(() => field().count()).toBe(2);
+  const next = JSON.parse(await download('Export JSON')) as PageModel;
+  expect(next.elements[0].stale).toBe(true);
+  expect(next.elements[1].id).not.toBe(old.elements[0].id);
+  expect(JSON.stringify(next)).not.toContain('fixture-sensitive');
+  await panel.close();
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(0);
+  await app.getByTestId('dental-plans').click();
+  expect(Number(await app.locator('#actions').textContent())).toBeGreaterThan(0);
+}, 25_000);
+
+it('keeps scan and picks in one collection and stops after tab change or reload', async () => {
+  await app.goto(fixtureUrl + '/login');
+  await clickPanel('Scan active page');
+  await expect.poll(() => field().count()).toBe(5);
+  await field().first().fill('custom_email');
+  await start();
+  await app.getByTestId('email').click();
+  await expect.poll(() => panel.getByText('Element already in collection.').count()).toBe(1);
+  expect(await field().count()).toBe(5);
+  expect(await field().first().inputValue()).toBe('custom_email');
+  const another = await context.newPage();
+  await another.goto(fixtureUrl);
+  await another.bringToFront();
+  await expect.poll(() => section().getByRole('status').textContent()).toMatch(/switching|disconnected/i);
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(0);
+  await app.bringToFront();
+  await start();
+  await app.reload();
+  await expect.poll(() => panelButton('Start inspection').count()).toBe(1);
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(0);
+}, 25_000);
+
+it('keeps isolated overlay bounds aligned after scrolling and resizing', async () => {
+  await start();
+  const row = app.locator('#coverage-row');
+  await row.hover();
+  const cdp = await context.newCDPSession(app);
+  type Tree = {nodeId: number; attributes?: string[]; children?: Tree[]; shadowRoots?: Tree[]};
+  function hoverBox(node: Tree): Tree | undefined {
+    const index = node.attributes?.indexOf('data-pom-state') ?? -1;
+    if (index >= 0 && node.attributes?.[index + 1] === 'hover') return node;
+    for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) {
+      const found = hoverBox(child);
+      if (found) return found;
+    }
+  }
+  async function boundsMatch() {
+    const {root} = await cdp.send('DOM.getDocument', {depth: -1, pierce: true});
+    const node = hoverBox(root);
+    if (!node) return false;
+    const {object} = await cdp.send('DOM.resolveNode', {nodeId: node.nodeId, objectGroup: 'overlay-check'});
+    const {result} = await cdp.send('Runtime.callFunctionOn', {
+      objectId: object.objectId, returnByValue: true,
+      functionDeclaration: 'function() { const r = this.getBoundingClientRect(); return [r.x,r.y,r.width,r.height]; }',
+    });
+    await cdp.send('Runtime.releaseObjectGroup', {objectGroup: 'overlay-check'});
+    const rect = await row.boundingBox();
+    return rect && [rect.x, rect.y, rect.width, rect.height]
+      .every((number, index) => Math.abs(number - result.value[index]) < 1);
+  }
+  try {
+    await expect.poll(boundsMatch).toBe(true);
+    await row.evaluate(node => {
+      node.querySelector('td')!.style.minWidth = '220px';
+      node.closest('.scroll')!.scrollTop += 8;
+    });
+    await app.setViewportSize({width: 1000, height: 740});
+    await expect.poll(boundsMatch).toBe(true);
+  } finally {
+    await cdp.detach();
+  }
+}, 20_000);
+
+it('coalesces hover work on a 2,500-control DOM and reports measured timing', async () => {
+  await app.goto(fixtureUrl + '/?large=1');
+  expect(await app.locator('[id^=perf-]').count()).toBe(2500);
+  await start();
+  const boxes = await app.locator('[id^=perf-]').evaluateAll(nodes => nodes.slice(0, 25).map(node => {
+    const rect = node.getBoundingClientRect();
+    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+  }));
+  const cdp = await context.newCDPSession(app);
+  const samples: number[] = [];
+  for (let batch = 0; batch < 20; batch++) {
+    const start = performance.now();
+    await Promise.all(boxes.map(box => cdp.send('Input.dispatchMouseEvent', {type: 'mouseMoved', ...box})));
+    samples.push(performance.now() - start);
+  }
+  await cdp.detach();
+  samples.sort((a, b) => a - b);
+  const started = performance.now();
+  await app.locator('#perf-49').hover();
+  await expect.poll(() => target().textContent()).toContain('Fixture control 49');
+  const settle = performance.now() - started;
+  console.info(`Inspector 2,500-control fixture, 500 CDP moves in 20 batches: median batch ${samples[10].toFixed(1)} ms, p95 ${samples[18].toFixed(1)} ms, settled panel update ${settle.toFixed(0)} ms.`);
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(1);
+  await clickPanel('Stop inspection');
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(0);
+}, 25_000);
+
+it('rejects invalid commands and makes repeated starts idempotent on one document port', async () => {
+  await start();
+  await clickPanel('Stop inspection');
+  // Open a direct same-extension port to exercise the wire contract in Chromium.
+  const states = await panel.evaluate(async settings => {
+    const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+    const port = chrome.tabs.connect(tab.id!, {name: 'pom-inspector', frameId: 0});
+    return new Promise<string[]>(resolveStates => {
+      const output: string[] = [];
+      port.onMessage.addListener(event => {
+        output.push(event.type);
+        if (event.type === 'stopped') {
+          port.disconnect();
+          resolveStates(output);
+        }
+      });
+      port.postMessage({type: 'start', settings, mode: 'semantic'});
+      port.postMessage({type: 'start', settings, mode: 'semantic'});
+      port.postMessage({type: 'inspect', id: 'old-document:1'});
+      port.postMessage({type: 'navigate', direction: 'invalid'});
+      port.postMessage({type: 'stop'});
+    });
+  }, defaultSettings);
+  expect(states).toEqual(['active', 'stale', 'error', 'stopped']);
+}, 15_000);
+
+it('shows actionable guidance for unsupported browser pages', async () => {
+  await app.goto('about:blank');
+  await app.bringToFront();
+  await clickPanel('Start inspection');
+  await expect.poll(() => panel.getByText(/Open an HTTP or HTTPS page/).count()).toBe(1);
+});

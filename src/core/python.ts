@@ -29,6 +29,7 @@ export function generate(model: PageModel): string {
     return name;
   }
   const rows = model.elements.filter(element => element.selected).map(element => {
+    if (element.stale) throw Error(`Remove or deselect the detached element ${element.name}`);
     const candidate = selectedCandidate(element);
     if (candidate?.validation.status !== 'unique-target') {
       throw Error(`Choose a locator that uniquely matches ${element.name}`);
@@ -47,6 +48,7 @@ export function generate(model: PageModel): string {
     lines.push(`        self.${name} = page.${pythonLocator(locator)}`);
   }
   for (const {name, action} of rows) {
+    if (action === 'assert') continue;
     const method = unique(`${action}_${name}`);
     const needsValue = action === 'fill' || action === 'select';
     const read = action === 'read';

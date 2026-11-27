@@ -5,13 +5,13 @@ export const normalize = (value: string) => value.replace(/[\u200b\u00ad]/g, '')
 const roles = new Set(('alert alertdialog application article banner blockquote button caption cell checkbox code columnheader combobox complementary contentinfo definition deletion dialog directory document emphasis feed figure form generic grid gridcell group heading img insertion link list listbox listitem log main marquee math menu menubar menuitem menuitemcheckbox menuitemradio meter navigation none note option paragraph presentation progressbar radio radiogroup region row rowgroup rowheader scrollbar search searchbox separator slider spinbutton status strong subscript superscript switch tab table tablist tabpanel term textbox time timer toolbar tooltip tree treegrid treeitem').split(' '));
 const nativeRoleTags = new Set('a area button dialog h1 h2 h3 h4 h5 h6 img input option select summary table td textarea th tr'.split(' '));
 
-export function accessibleRole(element: Element): string | null {
-  const tokens = (element.getAttribute('role') ?? '').trim().split(/\s+/);
+export function accessibleRole(element: Element, implicit = false): string | null {
+  const tokens = (implicit ? '' : element.getAttribute('role') ?? '').trim().split(/\s+/);
   const explicit = tokens.find(role => roles.has(role));
   if (explicit && explicit !== 'none' && explicit !== 'presentation') return explicit;
 
   let role = getRole(element);
-  if (tokens[0] && tokens[0] !== explicit) {
+  if ((implicit && element.hasAttribute('role')) || (tokens[0] && tokens[0] !== explicit)) {
     if (explicit) return null;
     if (!nativeRoleTags.has(element.localName)) return null;
     const native = element.cloneNode(false) as Element;
