@@ -272,6 +272,19 @@ it('keeps a panel override after renaming or toggling selection and restores aut
   expect(await root.locator('textarea').inputValue()).toContain('self.contact_email = page.get_by_test_id');
 });
 
+it('shows installation guidance if the side panel opens without extension storage', async () => {
+  await page.evaluate(() => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.append(root);
+  });
+  await page.addScriptTag({content: panel});
+  const alert = page.getByRole('alert', {name: ''}).filter({hasText: 'The browser extension APIs are unavailable.'});
+  await alert.waitFor();
+  expect(await page.locator('#root').innerText()).toContain('chrome://extensions');
+  expect(await page.pageErrors()).toEqual([]);
+});
+
 it('measures repeated cards and table rows while retaining the representative root limit', async () => {
   const samples = await page.evaluate(settings => {
     const {discoverComponents, ElementCollection} = window.engine;

@@ -292,4 +292,12 @@ function download(name: string, body: Blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-createRoot(document.getElementById('root')!).render(<App/>);
+const extension = globalThis.chrome;
+const ready = extension?.storage?.local && extension.runtime && extension.tabs && extension.scripting;
+
+createRoot(document.getElementById('root')!).render(ready ? <App/> : <main>
+  <h1>Page Object Generator</h1>
+  <p role="alert">The browser extension APIs are unavailable.</p>
+  <p>Load or reload the built dist folder as an unpacked extension at chrome://extensions or edge://extensions.
+    Then open the side panel from the extension’s toolbar icon.</p>
+</main>);
