@@ -44,12 +44,17 @@ Try [the specialty plan fixture](fixtures/inspector.html) over localhost. The th
 
 `npm run dev` watches bundled source files. Rebuild after changing static assets and reload the extension.
 
-To run the integration suite, use Python 3 with the pinned test requirements. Install Chromium and its matching Headless Shell, then build the unpacked extension.
+## Optional Playwright runtime validation
+
+Pair the side panel with a local Python companion to validate locators in an explicitly connected Chromium profile. The panel reports uniqueness, intended-target identity, state, and optional trial actions separately. [Companion installation and Windows walkthrough](companion/README.md)
+
+To run the integration suite, install the companion's test dependencies, Chromium, and its matching Headless Shell, then build the unpacked extension.
 
 ```sh
-python -m pip install -r tests/browser/requirements.txt
+python -m pip install -c companion/constraints.txt -e './companion[dev]'
 npx playwright install chromium
 npm run build
+python -m pytest companion -q
 npm run test:browser
 ```
 
