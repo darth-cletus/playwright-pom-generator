@@ -14,7 +14,7 @@ npm run build
 
 If Windows PowerShell blocks `npm.ps1`, use `npm.cmd` in each command, for example `npm.cmd run build`.
 
-Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, select Load unpacked and choose the generated `dist` directory. Pin the extension. Open a normal web page, click the toolbar icon to grant temporary active-tab access, then click Scan active page in the side panel. Repeat the toolbar click after navigating to a new origin or changing tabs.
+Open `chrome://extensions` (or `edge://extensions`), enable Developer mode, select Load unpacked and choose the generated `dist` directory. Pin the extension. Open a web page, click the toolbar icon to grant temporary active-tab access, then click Scan active page in the side panel. If the panel offers Allow access to this site, click it and approve the browser prompt to scan the site. The browser remembers that site permission. For local files, enable Allow access to file URLs in the extension details or serve the files over localhost.
 
 ## Try the fixture
 
