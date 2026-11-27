@@ -1,11 +1,12 @@
 # Current state
 
-POM-002 targets v0.2.0. Formal release acceptance is pending.
+POM-003 targets v0.3.0. POM-002's implementation checks and hosted CI passed. Installed Chrome and Edge release acceptance remains pending.
 
-- The existing side panel, element selection and renaming, highlighting, and Python and JSON exports use the new structured locator engine.
-- The engine proposes semantic and CSS alternatives and ranks them using the evidence from one scan. Users can inspect the recommendation, override it, restore it, and persist test ID settings locally.
-- The toolbar and optional per-site access flows remain in use. The `storage` permission saves locator preferences. Scanned page models stay in memory until locally exported.
-- Push CI installs locked Node dependencies, runs unit tests, type-checks and builds the extension, and runs Chromium integration tests and generated Python validation. The feature branch passed all steps. [GitHub Actions run](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46052250012)
-- An actual Playwright comparison runs against fixtures in tests. Extension scans use DOM validation and semantic approximation.
+- The side panel still scans pages, ranks structured candidates, highlights controls, and exports Python and JSON. The inspector adds semantic and exact picks, hover feedback, hierarchical navigation, and an integrated collection.
+- Scanned and inspected elements share locator candidates and a serializable model. Names, selection, ordering, and manual choices survive updates to the same live node. Detached nodes surface as stale.
+- The existing extension permissions cover the inspector. Port ownership and transient overlays keep inspector state in the panel and content script.
+- The automated browser suite loads the unpacked build in an isolated Chromium profile and pregrants the loopback fixture host. Local verification passed 25 unit and 18 browser tests, including Python syntax and execution checks. Hosted CI collects screenshots of the synthetic fixture. Native toolbar, permission prompt, and Edge release checks are manual.
 
-See the [acceptance checklist](acceptance-criteria.md) for browser release checks and [architecture](architecture.md) for validation limits.
+Next milestone is POM-004 runtime validation. The locator records already distinguish browser approximation and Playwright evidence. Explicit container selection also supplies a foundation for POM-005 without inferring reusable components.
+
+See [architecture](architecture.md) for constraints and [acceptance](acceptance-criteria.md) for verification.

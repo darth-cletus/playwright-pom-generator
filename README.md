@@ -32,15 +32,24 @@ Each element starts with the highest-ranked locator that matches only that eleme
 
 Match counts come from CSS queries or browser-side approximations of semantic locators. Confirm exported locators in Playwright and rescan after DOM changes. Labels and attributes can contain application information, so review exports before sharing them.
 
+## Inspect elements on the page
+
+Open the side panel and choose **Start inspection**. Hover a control, then click to add it without performing the application action. Use **Exact element** mode to pick the DOM node under the pointer, including static assertion targets. **Parent**, **Inspect child**, the sibling buttons, and **Original target** let you review nearby elements. Choose **Add target** to add the element shown in the panel.
+
+With focus on the page, press **Enter** to add the current target or **Escape** to stop. Enter leaves editable controls alone. Escape also works in the side panel. The collection lets you rename, reorder, deselect, remove, highlight, and inspect rows. Scans and picks of the same live element share a row. Static targets generate a locator attribute for assertions. A detached row needs to be removed or deselected before generating Python.
+
+Try [the specialty plan fixture](fixtures/inspector.html) over localhost. The three **See plans** buttons share an accessible name. The inspector exposes the ambiguous role locator and the unique test ID alternatives.
+
 ## Development
 
 `npm run dev` watches bundled source files. Rebuild after changing static assets and reload the extension.
 
-To run the integration suite, use Python 3 with the pinned test requirements and install the matching Chromium Headless Shell.
+To run the integration suite, use Python 3 with the pinned test requirements. Install Chromium and its matching Headless Shell, then build the unpacked extension.
 
 ```sh
 python -m pip install -r tests/browser/requirements.txt
-npx playwright install --only-shell chromium
+npx playwright install chromium
+npm run build
 npm run test:browser
 ```
 
