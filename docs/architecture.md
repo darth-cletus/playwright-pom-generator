@@ -83,4 +83,6 @@ The content lifecycle coordinates browser navigation and mutation revisions. Liv
 
 ## Browsing contexts
 
+Saved page objects use a separate review workspace. Static Python analysis and revision-bound byte edits run in the authenticated local companion. [Source analysis decision](decisions/0005-static-source-review.md)
+
 A browsing context is an ordered path of shadow hosts and iframe owners. The content observer and matcher walk accessible same-origin documents and open roots. Cross-origin access uses a targeted extension injection and an owner handshake. [Browsing context decision](decisions/0004-scoped-browsing-contexts.md)

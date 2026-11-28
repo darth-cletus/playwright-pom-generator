@@ -90,3 +90,7 @@ Use [the dynamic fixture](fixtures/dynamic.html) with the local fixture server f
 **Scan active page** includes accessible same-origin frames and open shadow roots. Open **Browsing contexts** to filter the collection or scan one context. A cross-origin iframe needs explicit permission. Choose **Scan embedded frames from** its origin, grant access in the browser, and use **Inspect** beside that frame to pick controls from its document.
 
 Python exports use native lazy locators, including `.content_frame` for iframe transitions. The v0.7.0 companion validates scoped paths over the existing protocol. See the [POM-007 verification report](docs/pom-007-verification.md) for the scope of support.
+
+## Manage existing page objects
+
+Open **Manage existing page objects** to load a Page Object Generator JSON model or up to ten Python files. JSON import works without the companion. Pair with companion v0.8.0 to analyze Python. Scan the intended tab, check imported locators, then approve any proposed replacements. Choose the current Python file again to verify its revision and preview a unified diff. Download the reviewed Python or patch and keep the original available for recovery. [POM-008 verification](docs/pom-008-verification.md)

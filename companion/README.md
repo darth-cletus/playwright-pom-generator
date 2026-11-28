@@ -58,3 +58,7 @@ Linux CI uses `npx playwright install --with-deps chromium`. Tests launch isolat
 ## Scoped runtime validation
 
 Companion v0.7.0 adds the `frame` locator operation to protocol v1. The extension checks the advertised strategy before submitting a scoped frame candidate. Validation verifies uniquely resolved iframe owners and target identity within the resolved document. Frame actionability trials return unverified. Locator evidence is still available for identity, match counts and element states.
+
+## Static source review
+
+Companion v0.8.0 also analyzes selected UTF-8 Python text and prepares SHA-256 revision-checked diffs through authenticated protocol-v1 operations. The service does not require a browser debugging connection for static source analysis. It does not execute imported code or read projects from disk.

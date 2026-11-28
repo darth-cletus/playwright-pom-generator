@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.0 (unreleased)
+
+- Added JSON model import and local static analysis of Python locator assignments.
+- Added imported locator checks, reviewed replacements, revision conflicts, and Python, patch and review report downloads.
+
 ## v0.7.0 (unreleased)
 
 - Added scoped discovery, selection and highlighting for same-origin frames and open shadow roots.
