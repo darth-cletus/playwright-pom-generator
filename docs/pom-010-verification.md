@@ -48,7 +48,7 @@ When approved targets match a current scan, **Add workflow method to scanned pag
 
 ## Verification and performance
 
-The POM-009 baseline passed 54 TypeScript, 34 Chromium and 23 Python tests. POM-010 adds four TypeScript tests and five Chromium tests. The automated flows cover password and input privacy, legitimate page behavior, synthetic event rejection, pause and stop, context paths, draft recovery, double click, file and selection controls, bounded capture, full-document continuation, and actual generated sync and async Python.
+The POM-009 baseline passed 54 TypeScript, 34 Chromium and 23 Python tests. POM-010 passed 58 TypeScript, 39 Chromium and 23 Python tests, along with the production build and Ruff. The automated flows cover password and input privacy, legitimate page behavior, synthetic event rejection, pause and stop, context paths, draft recovery, double click, file and selection controls, bounded capture, full-document continuation, and execution of generated sync and async Python. [Passing hosted workflow](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46190108344)
 
 Synthetic trusted Chromium input produced 250 captured clicks and released the recorder in 1,376 ms. Node validated 250 steps in 0.9 ms and lowered the same number of actions in 3.3 ms. The recorder caps a session and a generated method at 250 steps and retains one pending gesture. Recognition roots, aggregate configured method steps and workflow input size are bounded. Sustained DOM-churn latency, measurement across multiple simultaneous contexts and memory growth remain unverified.
 
@@ -72,7 +72,7 @@ Recorded selectors depend on DOM position and need review after layout changes. 
 
 ## Git
 
-Branch `feature/POM-010-interaction-recording` is stacked on POM-009. Extension v0.10.0 adds workflow schema 1 and recording port version 1. The companion remains v0.9.0 with protocol v1.
+Branch `feature/POM-010-interaction-recording` is stacked on POM-009. Extension v0.10.0 adds workflow schema 1 and recording port version 1. The companion remains v0.9.0 with protocol v1. [Draft pull request #9](https://github.com/darth-cletus/playwright-pom-generator/pull/9)
 
 ## Acceptance criteria
 
@@ -305,6 +305,6 @@ PASS records tested or directly reviewed behavior. FAIL records an implementatio
 | AC-010.223 | Existing POM-002 through POM-009 capabilities remain operational. | PASS | Standalone and paired extension regression suites, production build, and verification documentation. |
 | AC-010.224 | DEF-001 regression tests continue to pass. | PASS | Standalone and paired extension regression suites, production build, and verification documentation. |
 | AC-010.225 | The production extension builds successfully. | PASS | Standalone and paired extension regression suites, production build, and verification documentation. |
-| AC-010.226 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted verification pending. |
+| AC-010.226 | GitHub Actions workflows remain functional. | PASS | [Hosted suite passed on implementation commit ae5a1b5](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46190108344). |
 | AC-010.227 | Documentation reflects actual supported functionality. | PASS | Standalone and paired extension regression suites, production build, and verification documentation. |
 | AC-010.228 | Workflow models provide documented extension points for POM-011. | PASS | ADR, shared document matcher and generation lowering, separate recording and model identities, and schema-v1 workflow. |
