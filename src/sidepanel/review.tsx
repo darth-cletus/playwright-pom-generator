@@ -22,6 +22,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
   const [files, setFiles] = useState<SourceFile[]>([]);
   const [index, setIndex] = useState(0);
   const [checked, setChecked] = useState<string[]>([]);
+  const [rejected, setRejected] = useState<string[]>([]);
   const [preview, setPreview] = useState<Preview>();
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,6 +35,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
 
   useEffect(() => {
     setChecked([]);
+    setRejected([]);
     setPreview(undefined);
     setCounts(undefined);
     setRuntimeResults(undefined);
@@ -150,6 +152,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
       setFiles([]);
       setSaved(undefined);
       setChecked([]);
+      setRejected([]);
       setPreview(undefined);
       setCounts(undefined);
       setStatus('Imported review artifacts cleared.');
@@ -174,7 +177,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
       </label>
       <p>{file.analysis.classes.length} classes · {file.analysis.entries.length} supported locator assignments</p>
       {file.analysis.classes.length > 0 && <ul>{file.analysis.classes.map(entry =>
-        <li key={entry.line}>{entry.name} · line {entry.line}</li>)}</ul>}
+        <li key={entry.line}>{entry.name} · line {entry.line}{entry.bases.length ? ` · Bases ${entry.bases.join(', ')}` : ''}</li>)}</ul>}
       {file.analysis.diagnostics.length > 0 && <ul>{file.analysis.diagnostics.map(item =>
         <li key={item.line}>Line {item.line} uses a locator expression that requires manual review.</li>)}</ul>}
       <button onClick={() => download(file.name, file.source)}>Download original</button>
@@ -184,7 +187,8 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
         diagnostics: file.analysis.diagnostics,
         locators: file.analysis.entries.map((entry, number) => ({className: entry.className, name: entry.name,
           line: entry.line, editable: entry.editable, matches: counts?.[number], health: assess(entry, model).status,
-          approved: checked.includes(entry.id)})),
+          dependencies: entry.dependencies, decision: checked.includes(entry.id) ? 'approved' :
+            rejected.includes(entry.id) ? 'rejected' : 'pending'})),
       }, null, 2))}>Download review report</button>
       {file.analysis.entries.map((entry, number) => {
         const assessment = assess(entry, model);
@@ -192,15 +196,24 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
           <strong>{entry.className}.{entry.name} · line {entry.line}</strong>
           <code>{pythonLocator(entry.locator)}</code>
           <p>{assessment.status}{!entry.editable && ' · Read only'}</p>
+          {entry.dependencies.length > 0 && <p>Reads {entry.dependencies.map(name => {
+            const uses = file.analysis.entries.filter(item => item.dependencies.includes(name)).length;
+            return `${name} (${uses} supported assignment${uses === 1 ? '' : 's'})`;
+          }).join(', ')}</p>}
           {counts && <p>{countLabel(number)}</p>}
           {runtimeResults?.[number] && <p>Playwright {runtimeResults[number].status} · Identity {runtimeResults[number].identity}</p>}
-          {assessment.replacement && entry.editable && <label>
+          {assessment.replacement && entry.editable && !rejected.includes(entry.id) && <label>
             <input type="checkbox" disabled={busy} checked={checked.includes(entry.id)} onChange={event => {
               setPreview(undefined);
               setChecked(event.target.checked ? [...checked, entry.id] : checked.filter(key => key !== entry.id));
             }}/>
             Approve {pythonLocator(assessment.replacement)}
           </label>}
+          {assessment.replacement && entry.editable && <button disabled={busy} onClick={() => {
+            setPreview(undefined);
+            setChecked(items => items.filter(id => id !== entry.id));
+            setRejected(items => items.includes(entry.id) ? items.filter(id => id !== entry.id) : [...items, entry.id]);
+          }}>{rejected.includes(entry.id) ? 'Restore proposal' : 'Reject proposal'}</button>}
         </article>;
       })}
       <label>Choose current source to preview approved changes

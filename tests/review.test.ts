@@ -19,7 +19,7 @@ it('opens portable models without current document identity', () => {
 });
 
 it('suggests a replacement only for a single observed field with a unique locator', () => {
-  const entry = {id: 'old', name: 'payment', className: 'Checkout', line: 3, editable: true,
+  const entry = {id: 'old', name: 'payment', className: 'Checkout', line: 3, editable: true, dependencies: [],
     locator: {strategy: 'css', selector: '#old'} as const};
   expect(assess(entry, model).replacement).toEqual(tracked);
   expect(assess(entry, {...model, elements: [...model.elements, ...model.elements]}).replacement).toBeUndefined();

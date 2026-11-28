@@ -15,7 +15,7 @@ The v0.8.0 extension and companion provide a review workflow for existing page o
 | Tasks | Status |
 | --- | --- |
 | .01–.06 | Static source design, bounded file selection, JSON versions through v3, and top-level class discovery implemented. Packages and archive import remain open. |
-| .07–.14 | Literal locator calls, chains, frame paths and simple module constants are supported. Inheritance resolution, cross-file dependency analysis, filters, parameterized definitions and properties remain open. Unsupported direct locator assignments are reported by line. |
+| .07–.14 | Literal locator calls, chains, frame paths and simple module constants are supported. Review shows declared base names and shared constant references. Inheritance resolution, cross-file dependency analysis, filters, parameterized definitions and properties remain open. |
 | .15–.18 | File and line provenance, original source retention, revision hashes and explicit active-tab checks implemented. Persistent project-to-route binding remains open. |
 | .19–.26 | Browser and Playwright cardinality checks and conservative replacement candidates implemented. Confirmed imported identity, dependency-impact analysis and an application-change inventory remain open. |
 | .27–.35 | Individual approval, diff preview, original download, non-destructive replacement and revision conflicts implemented. Insertion, shared constant edits, project-wide transformations and three-way rebasing remain open. |
@@ -94,7 +94,7 @@ PASS records exercised or reviewed behavior. FAIL records an implementation gap.
 | AC-008.22 | Supported shadow host scopes are extracted. | PASS | Static constructor analysis and line diagnostics. Supported syntax is documented. |
 | AC-008.23 | Supported locator filters are extracted. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
 | AC-008.24 | Supported locator constants are extracted. | PASS | Static constructor analysis and line diagnostics. Supported syntax is documented. |
-| AC-008.25 | Shared locator dependencies are identified. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
+| AC-008.25 | Shared locator dependencies are identified. | PASS | Analysis records module string references and the panel counts supported uses. |
 | AC-008.26 | Supported parameterized locators are extracted. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
 | AC-008.27 | Supported locator-returning properties are analyzed. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
 | AC-008.28 | Supported locator-returning methods are analyzed. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
@@ -128,7 +128,7 @@ PASS records exercised or reviewed behavior. FAIL records an implementation gap.
 | AC-008.56 | Temporarily unavailable contexts are represented accurately. | FAIL | Explicit scan and cardinality are available. Durable context association, identity evidence and impact or risk analysis are pending. |
 | AC-008.57 | Validation freshness is tracked. | PASS | Explicit active scan, browser cardinality and local Playwright integration with unconfirmed identity. |
 | AC-008.58 | Historical validation is not presented as current evidence. | PASS | Explicit active scan, browser cardinality and local Playwright integration with unconfirmed identity. |
-| AC-008.59 | Locator dependencies are represented. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
+| AC-008.59 | Locator dependencies are represented. | PASS | Entry metadata and review reports retain module constant dependencies. |
 | AC-008.60 | Parent locator failures identify affected dependent locators. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
 | AC-008.61 | Shared selector changes include dependency impact. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
 | AC-008.62 | Frame owner failures identify affected child locators. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
@@ -230,7 +230,7 @@ PASS records exercised or reviewed behavior. FAIL records an implementation gap.
 | AC-008.158 | Automated tests cover supported source parsing. | PASS | Static constructor analysis and line diagnostics. Supported syntax is documented. |
 | AC-008.159 | Automated tests cover unsupported source constructs. | PASS | Static constructor analysis and line diagnostics. Supported syntax is documented. |
 | AC-008.160 | Automated tests cover source preservation. | PASS | CRLF, Unicode, trailing comments and no-change source test. |
-| AC-008.161 | Automated tests cover locator dependency analysis. | FAIL | The parser handles a bounded constructor subset. Component receiver classification, richer syntax and dependency-aware editing are pending. |
+| AC-008.161 | Automated tests cover locator dependency analysis. | PASS | The static Python regression checks extracted module constant references. |
 | AC-008.162 | Automated tests cover reconciliation recommendations. | PASS | TypeScript unit coverage for safe replacement selection. |
 | AC-008.163 | Automated tests cover approval and rejection workflows. | PASS | Source review state, individual approval, rejected or discarded edits and diff preview. |
 | AC-008.164 | Automated tests cover source transformation. | PASS | Revision-bound byte-span transformation, original download and Python patch tests. |

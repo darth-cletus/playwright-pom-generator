@@ -815,7 +815,14 @@ it('pairs the actual extension with Python and validates selected locator eviden
     await expect.poll(() => panel.getByText('Opened 1 Python file(s).').count()).toBe(1);
     await clickPanel('Validate imported locators with Playwright');
     await expect.poll(() => panel.getByText(/Playwright no-match/).count()).toBe(1);
+    await clickPanel('Reject proposal');
+    await expect.poll(() => panel.getByRole('checkbox', {name: /Approve get_by_test_id/}).count()).toBe(0);
+    await clickPanel('Restore proposal');
     await panel.getByRole('checkbox', {name: /Approve get_by_test_id/}).check();
+    await panel.getByLabel('Choose current source to preview approved changes').setInputFiles({
+      ...file, buffer: Buffer.concat([source, Buffer.from('# intervening edit\n')]),
+    });
+    await expect.poll(() => panel.getByText(/Source revision conflict/).count()).toBe(1);
     await panel.getByLabel('Choose current source to preview approved changes').setInputFiles(file);
     await expect.poll(() => panel.getByRole('textbox', {name: 'Source diff'}).inputValue()).toContain("get_by_test_id('email')  # preserve");
     if (process.env.POM_INSPECTOR_SCREENSHOTS) {

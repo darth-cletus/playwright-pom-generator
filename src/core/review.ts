@@ -6,22 +6,26 @@ import {readContextPath} from './context';
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-export interface SourceEntry {id: string; name: string; className: string; line: number; editable: boolean; locator: Locator}
+export interface SourceEntry {id: string; name: string; className: string; line: number; editable: boolean; locator: Locator;
+  dependencies: string[]}
 export interface SourceAnalysis {
   revision: string;
   entries: SourceEntry[];
-  classes: {name: string; line: number}[];
+  classes: {name: string; line: number; bases: string[]}[];
   diagnostics: {line: number; code: 'unsupported-locator'}[];
 }
 
 export function readAnalysis(value: unknown): SourceAnalysis {
+  const strings = (list: unknown) => Array.isArray(list) && list.every(item => typeof item === 'string');
   if (!record(value) || typeof value.revision !== 'string' || !/^[a-f0-9]{64}$/.test(value.revision) ||
     !Array.isArray(value.classes) || !Array.isArray(value.entries) || value.entries.length > 2000 ||
     !Array.isArray(value.diagnostics) || value.diagnostics.length > 100 || !value.diagnostics.every(item =>
       record(item) && item.code === 'unsupported-locator' && Number.isSafeInteger(item.line)) ||
-    !value.classes.every(entry => record(entry) && typeof entry.name === 'string' && Number.isSafeInteger(entry.line)) ||
+    !value.classes.every(entry => record(entry) && typeof entry.name === 'string' && Number.isSafeInteger(entry.line) &&
+      strings(entry.bases)) ||
     !value.entries.every(entry => record(entry) && ['id', 'name', 'className'].every(key => typeof entry[key] === 'string') &&
-      typeof entry.editable === 'boolean' && Number.isSafeInteger(entry.line) && locatorIsValid(entry.locator as Locator))) {
+      typeof entry.editable === 'boolean' && Number.isSafeInteger(entry.line) && strings(entry.dependencies) &&
+      locatorIsValid(entry.locator as Locator))) {
     throw Error('Invalid source analysis response.');
   }
   return value as unknown as SourceAnalysis;

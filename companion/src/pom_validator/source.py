@@ -58,6 +58,16 @@ def literal(node, constants):
     return None
 
 
+def qualified_name(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = qualified_name(node.value)
+        if parent:
+            return parent + "." + node.attr
+    return None
+
+
 def extract(node, constants, receivers, depth=0):
     if (
         depth > 4
@@ -143,7 +153,13 @@ def analyze(body):
     for cls in tree.body:
         if not isinstance(cls, ast.ClassDef):
             continue
-        classes.append({"name": cls.name, "line": cls.lineno})
+        classes.append(
+            {
+                "name": cls.name,
+                "line": cls.lineno,
+                "bases": [name for base in cls.bases if (name := qualified_name(base))],
+            }
+        )
         for method in cls.body:
             if (
                 not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -209,6 +225,14 @@ def analyze(body):
                         "end": end,
                         "locator": extracted,
                         "receiver": receiver,
+                        "dependencies": sorted(
+                            {
+                                part.id
+                                for part in ast.walk(node)
+                                if isinstance(part, ast.Name)
+                                and isinstance(constants.get(part.id), str)
+                            }
+                        ),
                         "editable": first_comment == len(comments)
                         or comments[first_comment] >= end,
                     }

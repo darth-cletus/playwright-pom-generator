@@ -24,6 +24,7 @@ SOURCE = (
 def test_static_analysis_and_revision_bound_patch(tmp_path):
     result = analyze({"source": SOURCE})
     first, frame = result["entries"]
+    assert first["dependencies"] == ["PAYMENT"]
     assert first["locator"] == {"strategy": "css", "selector": "#old"}
     assert frame["locator"]["strategy"] == "frame"
     body = {"source": SOURCE, "filename": "page.py", "revision": result["revision"]}
