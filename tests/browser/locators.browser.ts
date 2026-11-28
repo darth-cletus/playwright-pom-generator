@@ -79,7 +79,7 @@ async function scan() {
   return page.evaluate(settings => window.scanFixture(settings), defaultSettings);
 }
 
-function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator = page): PlaywrightLocator {
+function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator | ReturnType<PlaywrightLocator['contentFrame']> = page): PlaywrightLocator {
   const exact = {exact: true};
   switch (locator.strategy) {
     case 'css': return scope.locator(locator.selector);
@@ -91,11 +91,78 @@ function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator = page
     case 'alt': return scope.getByAltText(locator.value, exact);
     case 'title': return scope.getByTitle(locator.value, exact);
     case 'chain': return runtimeLocator(locator.child, runtimeLocator(locator.root, scope));
+    case 'frame': return runtimeLocator(locator.child, runtimeLocator(locator.root, scope).contentFrame());
     case 'filter': return runtimeLocator(locator.base, scope).filter(locator.has
       ? {has: runtimeLocator(locator.has)} : {hasText: locator.text});
     case 'index': return runtimeLocator(locator.base, scope).nth(locator.index);
   }
 }
+
+it('generates and executes a reusable component with a relative iframe member', async () => {
+  const html = `<section id="checkout" aria-label="Checkout"><iframe id="payment" srcdoc="<button data-testid='confirm'>Confirm</button>"></iframe></section>`;
+  await page.setContent(html);
+  await page.frameLocator('#payment').getByTestId('confirm').waitFor();
+  const model = await page.evaluate(settings => {
+    const {ElementCollection, describeComponent} = window.engine;
+    const collection = new ElementCollection();
+    const component = describeComponent([document.querySelector('#checkout')!], collection, settings, 1);
+    component.className = 'CheckoutWidget';
+    component.instances[0].name = 'checkout';
+    return {...collection.page([]), components: [component]};
+  }, defaultSettings);
+  const code = generate(model);
+  expect(code).toContain('.content_frame.');
+  const python = process.env.POM_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
+  const result = spawnSync(python, ['-c', [
+    'import json, sys',
+    'from playwright.sync_api import sync_playwright',
+    'data = json.load(sys.stdin)',
+    'namespace = {}',
+    'exec(data["code"], namespace)',
+    'with sync_playwright() as playwright:',
+    '    browser = playwright.chromium.launch()',
+    '    page = browser.new_page()',
+    '    page.set_content(data["html"])',
+    '    checkout = namespace["GeneratedPage"](page).checkout',
+    '    assert checkout.confirm_button.text_content() == "Confirm"',
+    '    browser.close()',
+  ].join('\n')], {input: JSON.stringify({code, html}), encoding: 'utf8', timeout: 10000});
+  expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+}, 15000);
+
+it('measures bounded discovery across frames and open shadow roots', async () => {
+  const records: object[] = [];
+  for (const [frames, hosts] of [[0, 0], [10, 0], [50, 0], [0, 100], [10, 25]]) {
+    await page.evaluate(async ({frames, hosts}) => {
+      document.body.innerHTML = '<button>Top action</button>';
+      const ready = [];
+      for (let index = 0; index < frames; index++) {
+        const frame = document.createElement('iframe');
+        frame.id = 'checkout-' + index;
+        frame.srcdoc = '<button data-testid="continue">Continue</button>';
+        ready.push(new Promise<void>(resolve => frame.addEventListener('load', () => resolve(), {once: true})));
+        document.body.append(frame);
+      }
+      for (let index = 0; index < hosts; index++) {
+        const host = document.createElement('div');
+        host.id = 'widget-' + index;
+        host.attachShadow({mode: 'open'}).innerHTML = '<button data-testid="continue">Continue</button>';
+        document.body.append(host);
+      }
+      await Promise.all(ready);
+    }, {frames, hosts});
+    const result = await page.evaluate(settings => {
+      const collection = new window.engine.ElementCollection();
+      const start = performance.now();
+      const model = collection.scan(settings);
+      return {contexts: model.contexts?.length ?? 0, rows: model.elements.length, milliseconds: Math.round(performance.now() - start)};
+    }, defaultSettings);
+    expect(result.contexts).toBe(Math.min(frames + hosts, 64));
+    expect(result.rows).toBe(1 + Math.min(frames + hosts, 64));
+    records.push({frames, hosts, ...result});
+  }
+  console.info('Context discovery workload', JSON.stringify(records));
+}, 20000);
 
 it('detects native, contextual and explicit roles', async () => {
   const expected = {

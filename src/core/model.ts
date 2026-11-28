@@ -1,8 +1,14 @@
-import type {Candidate} from './locator';
+import {usesFrame, type Candidate} from './locator';
 import {currentEvidence} from './runtime';
 import {modelSchemaVersion, validateComponentGraph, type ComponentDefinition} from './components';
+import type {BrowsingContext} from './context';
 
 export type Action = 'click' | 'fill' | 'check' | 'select' | 'read' | 'assert';
+export const contextSchemaVersion = 3;
+
+export function supportsSchema(version?: number): boolean {
+  return version === undefined || version === 1 || version === modelSchemaVersion || version === contextSchemaVersion;
+}
 
 export interface ElementModel {
   id: string;
@@ -18,6 +24,7 @@ export interface ElementModel {
   availability?: 'available' | 'unavailable';
   observedRoute?: string;
   scopeKey?: string;
+  context?: BrowsingContext;
 }
 
 export interface PageModel {
@@ -28,6 +35,7 @@ export interface PageModel {
   components?: ComponentDefinition[];
   schemaVersion?: number;
   application?: {route: string; stateLabel?: string};
+  contexts?: BrowsingContext[];
 }
 
 export function mergePage(current: PageModel | null, incoming: PageModel): PageModel {
@@ -44,11 +52,11 @@ export function mergePage(current: PageModel | null, incoming: PageModel): PageM
         return evidence && !candidate.runtime ? {...candidate, runtime: {...evidence, freshness: 'historical'}} : candidate;
       })};
   });
-  return {...current, url: incoming.url, elements: [...elements, ...latest.values()]};
+  return {...current, url: incoming.url, contexts: incoming.contexts ?? current.contexts, elements: [...elements, ...latest.values()]};
 }
 
 export function serializePage(model: PageModel): string {
-  if (model.schemaVersion !== undefined && model.schemaVersion !== 1 && model.schemaVersion !== modelSchemaVersion) {
+  if (!supportsSchema(model.schemaVersion)) {
     throw Error('Unsupported page object schema version.');
   }
   if (model.components?.length) validateComponentGraph(model.components, model.className.trim());
@@ -62,8 +70,14 @@ export function serializePage(model: PageModel): string {
     ...definition, runtime: definition.runtime?.map(report => !currentEvidence(report.evidence)
       ? {...report, evidence: {...report.evidence, freshness: 'historical'}} : report),
   }));
-  const exportModel = {...model, ...(components?.length ? {schemaVersion: modelSchemaVersion, components} : {}), elements};
-  if (!model.application) return JSON.stringify(exportModel, null, 2);
+  const scopedRow = (row: ElementModel) => !!row.context || row.candidates.some(candidate => usesFrame(candidate.locator));
+  const scoped = !!model.contexts?.length || model.elements.some(scopedRow) ||
+    !!components?.some(definition => definition.instances.some(instance => scopedRow(instance.root)) ||
+      definition.members.some(scopedRow) || definition.children.some(link => usesFrame(link.locator)) ||
+      Boolean(definition.collection && usesFrame(definition.collection.locator)));
+  const schemaVersion = scoped ? contextSchemaVersion : components?.length ? modelSchemaVersion : model.schemaVersion;
+  const exportModel = {...model, schemaVersion, ...(components?.length ? {components} : {}), elements};
+  if (!model.application && !scoped) return JSON.stringify(exportModel, null, 2);
 
   // Live exports are portable model data. Observation references belong to the source document.
   const sessionFields = new Set(['referenceId', 'documentKey', 'scopeKey', 'requestId', 'browserId',

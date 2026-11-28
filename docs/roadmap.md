@@ -7,7 +7,7 @@
 | POM-004 | Optional Python Playwright companion, document and target correlation, runtime evidence, and export policies. Installed-browser release acceptance is tracked separately. |
 | POM-005 | Reviewed repeat discovery, scoped components and collections, runtime evidence, and Python package generation. |
 | POM-006 | Advanced SPA lifecycle management. |
-| POM-007 | Iframe and shadow DOM support. Extend the locator model with scope paths. |
+| POM-007 | Iframe and open shadow DOM paths, targeted embedded permissions and scoped Python generation. Installed-browser acceptance remains open. |
 | POM-008 | Existing page object reconciliation. |
 | POM-009 | Configurable generator templates. |
 | POM-010 | Interaction recording. |

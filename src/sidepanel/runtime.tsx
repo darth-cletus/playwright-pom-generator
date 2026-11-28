@@ -1,8 +1,9 @@
 import {useEffect, useRef, useState, type Dispatch, type SetStateAction} from 'react';
-import {locatorKey, type Candidate} from '../core/locator';
+import {locatorKey, usesFrame, type Candidate} from '../core/locator';
 import {archiveValidation, type ElementModel, type PageModel} from '../core/model';
 import {evidenceLifetime, type CompanionStatus, type Correlation, type RuntimeEvidence, type RuntimePolicy, type Trial} from '../core/runtime';
 import {readResults, readStatus, request, type Pairing} from './runtime-client';
+import type {FrameScan} from './frames';
 
 export type RuntimeJob = {
   element: ElementModel;
@@ -13,7 +14,7 @@ export type RuntimeJob = {
 type Batch = {controller: AbortController; requestId?: string};
 
 export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateAction<PageModel | null>>,
-  tab: number | null, testIdAttribute?: string) {
+  tab: number | null, testIdAttribute?: string, embedded: FrameScan[] = []) {
   const [port, setPort] = useState('8765');
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<CompanionStatus>();
@@ -75,7 +76,8 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
     function changed(value: unknown, sender: chrome.runtime.MessageSender) {
       const message = value as {type?: string; documentKey?: string} | null;
       if (message?.type === 'POM_RUNTIME_CHANGED' && sender.id === chrome.runtime.id && sender.tab?.id === tab &&
-        message.documentKey === model?.documentKey) {
+        (message.documentKey === model?.documentKey || embedded.some(frame =>
+          frame.collectionKey === message.documentKey && frame.documentId === sender.documentId))) {
         invalidate();
       }
     }
@@ -93,7 +95,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
       chrome.tabs.onUpdated?.removeListener(updated);
       chrome.tabs.onActivated?.removeListener(activated);
     };
-  }, [tab, model?.documentKey]);
+  }, [tab, model?.documentKey, embedded]);
 
   useEffect(() => {
     const next = model?.elements.flatMap(element => element.candidates.flatMap(candidate =>
@@ -163,31 +165,47 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
         if (signal.aborted) break;
         setMessage(`Validating ${completed + 1} of ${jobs.length} element(s)…`);
         let marker: Correlation | undefined;
+        let frameMarker: Correlation | undefined;
+        const external = embedded.find(frame => frame.rows.some(row => row.referenceId === job.element.referenceId));
+        const release = (attribute: string, documentId?: string) => chrome.tabs.sendMessage(tab, {
+          type: 'POM_RUNTIME_RELEASE', attribute,
+        }, documentId ? {documentId} : {frameId: 0});
         try {
           if (job.element.stale) throw Error('The selected element is detached.');
+          if (job.element.context?.external && !external) throw Error('Scan the embedded frame again before validating.');
+          if (job.candidates.some(candidate => usesFrame(candidate.locator)) && !status?.strategies?.includes('frame')) {
+            throw Error('Update the local companion to validate frame locators.');
+          }
           const [current] = await chrome.tabs.query({active: true, currentWindow: true});
           if (current?.id !== tab) throw Error('Switch to the inspected tab before validating.');
           marker = await chrome.tabs.sendMessage(tab, {
-            type: 'POM_RUNTIME_MARK', documentKey, referenceId: confirmTarget ? job.element.referenceId : undefined,
-            scopeId: job.scopeId,
+            type: 'POM_RUNTIME_MARK', documentKey, referenceId: !external && confirmTarget ? job.element.referenceId : undefined,
+            scopeId: external ? undefined : job.scopeId,
           }, {frameId: 0}) ?? undefined;
           if (!marker) throw Error('The document or element is no longer available. Scan or inspect it again.');
+          if (external) {
+            frameMarker = await chrome.tabs.sendMessage(tab, {type: 'POM_RUNTIME_MARK', documentKey: external.collectionKey,
+              referenceId: confirmTarget ? job.element.referenceId : undefined, scopeId: job.scopeId,
+              shared: {attribute: marker.attribute, nonce: marker.nonce}}, {documentId: external.documentId}) ?? undefined;
+            if (!frameMarker || frameMarker.attribute !== marker.attribute || frameMarker.nonce !== marker.nonce) {
+              throw Error('The embedded document changed. Scan it again before validating.');
+            }
+          }
           if (signal.aborted) break;
           const requestId = crypto.randomUUID();
           active.requestId = requestId;
           const candidates = job.candidates;
-          const {context: applicationRevision, ...correlation} = marker;
+          const {context: applicationRevision, ...correlation} = frameMarker ?? marker;
           const data = await request(config, 'validate', {requestId, browserId, documentKey,
             correlation, states, trial: requestedTrial, locators: candidates.map(candidate => candidate.locator)}, signal);
           const results = readResults(data, {requestId, browserId, documentKey,
             strategies: candidates.map(candidate => candidate.locator.strategy)});
-          const resultMarker = marker;
-          const unchanged = await chrome.tabs.sendMessage(tab, {
-            type: 'POM_RUNTIME_RELEASE', attribute: resultMarker.attribute,
-          }, {frameId: 0});
+          const unchanged = await release(marker.attribute);
           marker = undefined;
+          const childUnchanged = frameMarker ? await release(frameMarker.attribute, external?.documentId) : true;
+          frameMarker = undefined;
           if (signal.aborted) break;
-          if (unchanged !== true) throw Error('The document or element changed during validation. Retry on the intended target.');
+          if (unchanged !== true || childUnchanged !== true) throw Error('The document or element changed during validation. Retry on the intended target.');
           setModel(latest => {
             if (signal.aborted || latest?.documentKey !== documentKey) return latest;
             const evidence = candidates.map((candidate, index): RuntimeEvidence => ({
@@ -211,9 +229,8 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
           failures.push(error instanceof Error ? error.message : 'Validation failed.');
         } finally {
           active.requestId = undefined;
-          if (marker) await chrome.tabs.sendMessage(tab, {
-            type: 'POM_RUNTIME_RELEASE', attribute: marker.attribute,
-          }, {frameId: 0}).catch(() => {});
+          if (marker) await release(marker.attribute).catch(() => {});
+          if (frameMarker) await release(frameMarker.attribute, external?.documentId).catch(() => {});
         }
         completed++;
       }

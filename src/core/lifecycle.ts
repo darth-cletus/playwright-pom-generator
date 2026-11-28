@@ -1,4 +1,5 @@
 import type {ComponentDefinition} from './components';
+import type {BrowsingContext} from './context';
 import type {Candidate, Locator, LocatorSettings} from './locator';
 import type {ElementModel, PageModel} from './model';
 
@@ -47,6 +48,7 @@ export interface LiveUpdate {
   collections: LiveCollectionState[];
   proposals: ComponentDefinition[];
   metrics: LiveMetrics;
+  contexts?: BrowsingContext[];
 }
 
 export type LiveCommand =
@@ -99,6 +101,7 @@ export function reconcileLive(page: PageModel | null, update: LiveUpdate, sameDo
   }
 
   const existing = (page?.elements ?? []).map(row => {
+    if (row.context?.external && page?.documentKey === context.documentKey) return row;
     const unavailable = row.stale || page?.documentKey !== context.documentKey || (row.referenceId &&
       (removed.has(row.referenceId) || (update.full && row.availability === 'available' && !fresh.has(row.referenceId))));
     let match = row.referenceId ? fresh.get(row.referenceId) : undefined;
@@ -134,6 +137,6 @@ export function reconcileLive(page: PageModel | null, update: LiveUpdate, sameDo
     }),
   }));
   return {...page, url: page?.url ?? context.route, className: page?.className ?? 'GeneratedPage',
-    elements: [...existing, ...added], components, documentKey: context.documentKey,
+    elements: [...existing, ...added], components, contexts: update.contexts ?? page?.contexts, documentKey: context.documentKey,
     application: {...page?.application, route: context.route}};
 }

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Scoped checkout</title>
+<button data-testid="submit">Confirm</button>
+<iframe id="billing" title="Billing" src="context-frame.html"></iframe>
+<aside id="receipt"></aside>
+<aside id="preferences"></aside>
+<script>
+  for (const id of ['receipt', 'preferences']) {
+    document.getElementById(id).attachShadow({mode: 'open'}).innerHTML =
+      '<button data-testid="submit">Confirm</button><slot></slot>';
+  }
+  const unavailable = document.createElement('iframe');
+  unavailable.id = 'isolated';
+  unavailable.sandbox = 'allow-scripts';
+  unavailable.src = 'context-frame.html';
+  document.body.append(unavailable);
+  if (location.search === '?cross-origin') {
+    const cross = document.createElement('iframe');
+    cross.id = 'external-payment';
+    const source = new URL('context-frame.html', location.href);
+    source.hostname = 'localhost';
+    cross.src = source.href;
+    document.body.append(cross);
+  }
+</script>

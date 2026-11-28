@@ -32,7 +32,8 @@ const editable = `input:not([type=button i], [type=submit i], [type=reset i], [t
 export function referencedElements(element: Element, attribute: string): Element[] {
   const ids = (element.getAttribute(attribute) ?? '').trim().split(/\s+/).filter(Boolean);
   return ids.flatMap(id => {
-    const target = element.ownerDocument.getElementById(id);
+    const root = element.getRootNode() as Document | ShadowRoot;
+    const target = root.getElementById?.(id);
     return target ? [target] : [];
   });
 }

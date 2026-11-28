@@ -13,7 +13,7 @@ export function extractMetadata(element: Element, text: WeakMap<Element, string>
   let action: Action = 'click';
   if (tag === 'select') action = 'select';
   else if (type === 'checkbox' || type === 'radio') action = 'check';
-  else if (tag === 'textarea' || (element instanceof HTMLElement && element.isContentEditable) ||
+  else if (tag === 'textarea' || (element as HTMLElement).isContentEditable ||
     (type && !['button', 'submit', 'reset', 'file', 'image', 'range', 'color'].includes(type))) action = 'fill';
   return {tag, role, name, labels, exactText, label: normalize(label).slice(0, 120), action,
     defaultSelected: !['file', 'range', 'color'].includes(type)};

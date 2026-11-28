@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from playwright.async_api import Locator, Page
+from playwright.async_api import FrameLocator, Locator, Page
 
 STRATEGIES = (
     "css",
@@ -13,6 +13,7 @@ STRATEGIES = (
     "alt",
     "title",
     "chain",
+    "frame",
     "filter",
     "index",
 )
@@ -62,7 +63,7 @@ class LocatorSpec:
         strategy = data.get("strategy")
         if strategy not in STRATEGIES:
             raise RequestError("Unsupported locator strategy.")
-        if strategy == "chain":
+        if strategy in ("chain", "frame"):
             required = {"strategy", "root", "child"}
             spec = cls(
                 strategy,
@@ -76,6 +77,8 @@ class LocatorSpec:
                 spec = cls(
                     strategy, base=base, child=cls.parse(data.get("has"), depth + 1)
                 )
+                if spec.child and spec.child.uses_frame():
+                    raise RequestError("Filters cannot enter an iframe.")
             else:
                 required = {"strategy", "base", "text"}
                 spec = cls(strategy, string(data.get("text"), "filter text"), base=base)
@@ -126,12 +129,21 @@ class LocatorSpec:
                 values.update(child.test_id_attributes())
         return values
 
-    def construct(self, page: Page, scope: Locator | None = None) -> Locator:
+    def uses_frame(self) -> bool:
+        return self.strategy == "frame" or any(
+            child.uses_frame() for child in (self.base, self.child) if child
+        )
+
+    def construct(
+        self, page: Page, scope: Locator | FrameLocator | None = None
+    ) -> Locator:
         receiver = scope if scope is not None else page
         if self.base:
             base = self.base.construct(page, scope)
             if self.strategy == "chain" and self.child:
                 return self.child.construct(page, base)
+            if self.strategy == "frame" and self.child:
+                return self.child.construct(page, base.content_frame)
             if self.strategy == "filter":
                 return (
                     base.filter(has=self.child.construct(page))

@@ -84,3 +84,9 @@ When the companion is already connected, you can enable automatic validation for
 Open **Live discovery details** to inspect batch timing and rendered collection membership. A total is shown when the page supplies a usable `aria-rowcount`. Add an application state label before exporting a page model. Live JSON exports carry the state label, route and availability without the document's transient references. The Python companion remains compatible with protocol v1.
 
 Use [the dynamic fixture](fixtures/dynamic.html) with the local fixture server for development. See the [lifecycle design](docs/decisions/0003-live-application-lifecycle.md) and [POM-006 verification](docs/pom-006-verification.md).
+
+## Iframes and shadow DOM
+
+**Scan active page** includes accessible same-origin frames and open shadow roots. Open **Browsing contexts** to filter the collection or scan one context. A cross-origin iframe needs explicit permission. Choose **Scan embedded frames from** its origin, grant access in the browser, and use **Inspect** beside that frame to pick controls from its document.
+
+Python exports use native lazy locators, including `.content_frame` for iframe transitions. The v0.7.0 companion validates scoped paths over the existing protocol. See the [POM-007 verification report](docs/pom-007-verification.md) for the scope of support.

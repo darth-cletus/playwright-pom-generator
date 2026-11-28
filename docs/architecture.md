@@ -80,3 +80,7 @@ The generator validates names, graph references, and locator composition before 
 ## Dynamic applications
 
 The content lifecycle coordinates browser navigation and mutation revisions. Live discovery runs against dirty subtrees and tracked references and sends versioned patches to the side panel. The panel reconciles those patches with editable page objects. Playwright validation uses the same revision for marker verification and invalidates its evidence when the document changes. [Lifecycle decision](decisions/0003-live-application-lifecycle.md)
+
+## Browsing contexts
+
+A browsing context is an ordered path of shadow hosts and iframe owners. The content observer and matcher walk accessible same-origin documents and open roots. Cross-origin access uses a targeted extension injection and an owner handshake. [Browsing context decision](decisions/0004-scoped-browsing-contexts.md)

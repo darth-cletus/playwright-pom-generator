@@ -2,15 +2,21 @@ import asyncio
 import time
 from datetime import UTC, datetime
 
-from playwright.async_api import Error, Locator, Page
+from playwright.async_api import Error, FrameLocator, Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from .browser import correlated
 from .contracts import LocatorSpec, ValidationRequest
 
 MATCH = """(nodes, [attribute, nonce]) => {
-  const targets = [...document.querySelectorAll('[' + attribute + ']')]
-    .filter(node => node.getAttribute(attribute) === nonce);
+  const targets = [];
+  const roots = [document];
+  for (let index = 0; index < roots.length; index++) {
+    for (const node of roots[index].querySelectorAll('*')) {
+      if (node.getAttribute(attribute) === nonce) targets.push(node);
+      if (node.shadowRoot) roots.push(node.shadowRoot);
+    }
+  }
   return {count: nodes.length, targets: targets.length,
     matched: targets.length === 1 && nodes.includes(targets[0])};
 }"""
@@ -91,9 +97,9 @@ async def resolve_scope(
     spec: LocatorSpec,
     result: dict,
     root_marker: str | None,
-    scope: Locator | None = None,
+    scope: Locator | FrameLocator | None = None,
 ) -> Locator | None:
-    if spec.strategy != "chain" or not spec.base or not spec.child:
+    if spec.strategy not in ("chain", "frame") or not spec.base or not spec.child:
         return spec.construct(page, scope)
     parent = await resolve_scope(page, spec.base, {}, None, scope)
     if parent is None:
@@ -103,8 +109,16 @@ async def resolve_scope(
     result.update(rootCount=count, rootIdentity="unverified")
     if count != 1:
         return None
+    if spec.strategy == "frame":
+        if not await parent.evaluate("node => node.localName === 'iframe'"):
+            return None
+        return await resolve_scope(
+            page, spec.child, {}, root_marker, parent.content_frame
+        )
     if root_marker:
-        confirmed = await parent.and_(page.locator(root_marker)).count() == 1
+        confirmed = await parent.evaluate(
+            "(node, selector) => node.matches(selector)", root_marker
+        )
         result["rootIdentity"] = "confirmed" if confirmed else "wrong"
         if not confirmed:
             return None
@@ -127,9 +141,7 @@ async def measure(page: Page, spec: LocatorSpec, request: ValidationRequest) -> 
                 result["status"] = "stale-document"
                 return result
             root_marker = (
-                f'css=[{marker.attribute}-root="{marker.nonce}"]'
-                if marker.root
-                else None
+                f'[{marker.attribute}-root="{marker.nonce}"]' if marker.root else None
             )
             locator = await resolve_scope(page, spec, result, root_marker)
             if locator is None:
@@ -162,13 +174,13 @@ async def measure(page: Page, spec: LocatorSpec, request: ValidationRequest) -> 
                             request.trial,
                             request.timeout,
                         )
-                        if identity == "confirmed"
+                        if identity == "confirmed" and not spec.uses_frame()
                         else "unverified",
                     }
             if not await correlated(page, marker):
                 result.update(status="stale-document", identity="stale")
             elif (
-                spec.strategy == "chain"
+                spec.strategy in ("chain", "frame")
                 and await resolve_scope(page, spec, {}, root_marker) is None
             ):
                 result.update(status="stale-target", identity="stale")

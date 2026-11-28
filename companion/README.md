@@ -55,3 +55,6 @@ npm.cmd run test:browser
 ```
 
 Linux CI uses `npx playwright install --with-deps chromium`. Tests launch isolated Chromium profiles and a temporary companion against synthetic fixtures.
+## Scoped runtime validation
+
+Companion v0.7.0 adds the `frame` locator operation to protocol v1. The extension checks the advertised strategy before submitting a scoped frame candidate. Validation verifies uniquely resolved iframe owners and target identity within the resolved document. Frame actionability trials return unverified. Locator evidence is still available for identity, match counts and element states.
