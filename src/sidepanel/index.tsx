@@ -11,6 +11,7 @@ import {ComponentsPanel} from './components';
 import {useLive} from './live';
 import {contextLabel, type ContextBoundary} from '../core/context';
 import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
+import {Review} from './review';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect' | 'live';
@@ -331,6 +332,18 @@ function App() {
     <h1>Page Object Generator</h1>
     {settings && <Settings settings={settings} onSave={saveSettings}/>}
     <RuntimeControls runtime={runtime} extensionId={chrome.runtime.id}/>
+    <Review model={model} setModel={setModel} operation={runtime.sourceOperation} download={save}
+      runtimeCheck={runtime.status?.connected ? runtime.validateImported : undefined} observationEpoch={runtime.observationEpoch}
+      observe={async locators => {
+      if (tab === null || !model?.documentKey) throw Error('Scan the target page first.');
+      const [active] = await chrome.tabs.query({active: true, currentWindow: true});
+      if (active?.id !== tab) throw Error('Switch to the scanned tab before checking locators.');
+      const counts: unknown = await chrome.tabs.sendMessage(tab,
+        {type: 'POM_IMPORTED_CHECK', documentKey: model.documentKey, locators}, {frameId: 0});
+      if (!Array.isArray(counts) || counts.length !== locators.length || !counts.every(count =>
+        count === null || (Number.isSafeInteger(count) && count >= 0))) throw Error('The scan is stale. Scan the page again.');
+      return counts;
+    }}/>
     <button disabled={!settings || busy || inspector.state === 'active' || inspector.state === 'starting'}
       onClick={() => void openPage('scan')}>Scan active page</button>
     <InspectorControls inspector={inspector} ready={!!settings && !busy} start={() => void openPage('inspect')}/>

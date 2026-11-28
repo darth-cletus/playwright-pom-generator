@@ -10,6 +10,8 @@ import {ApplicationLifecycle} from './lifecycle';
 import {LiveDiscovery} from './live-discovery';
 import {announceFrame, correlateFrame, frameNonce, frameOrigin} from './frame-bridge';
 import {readContextPath} from '../core/context';
+import {locatorIsValid, type Locator} from '../core/locator';
+import {createDomMatcher} from './validation';
 
 function install() {
   const collection = new ElementCollection();
@@ -50,6 +52,13 @@ function install() {
           typeof id === 'string' && id.startsWith(collection.documentKey + ':') && !collection.get(id)) : [];
         reply({...page, staleIds});
       }
+    } else if (message?.type === 'POM_IMPORTED_CHECK' && sender.id === chrome.runtime.id &&
+      message.documentKey === collection.documentKey && Array.isArray(message.locators) && message.locators.length <= 100 &&
+      message.locators.every((locator: Locator) => locatorIsValid(locator))) {
+      const match = createDomMatcher(document);
+      reply(message.locators.map((locator: Locator) => {
+        try {return match(locator).length;} catch {return null;}
+      }));
     } else if (message?.type === 'POM_COMPONENT_DISCOVER' && message.documentKey === collection.documentKey) {
       const settings = readSettings(message.settings);
       if (settings) reply(discoverComponents(collection, settings));
