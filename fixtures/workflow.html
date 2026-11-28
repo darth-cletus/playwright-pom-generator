@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Workflow fixture</title>
+<main>
+  <label>Email <input type="email"></label>
+  <label>Password <input type="password" autocomplete="current-password"></label>
+  <label>Remember <input type="checkbox"></label>
+  <button>Submit</button>
+  <output>0</output>
+  <label>Plan <select><option value="first">First</option><option value="private-option-value">Second</option></select></label>
+  <label>Attachment <input type="file"></label>
+  <a download="private-download.txt" href="data:text/plain,private-download-body">Download</a>
+</main>
+<script>
+  document.querySelector('button').addEventListener('click', () => {
+    const output = document.querySelector('output');
+    output.textContent = String(Number(output.textContent) + 1);
+  });
+</script>
