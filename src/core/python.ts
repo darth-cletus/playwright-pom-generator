@@ -84,7 +84,7 @@ function operation(options: GenerationOptions, name: string, action: Action, arg
   const target = access(options, name);
   if (expected !== undefined) argument = quote(expected);
   const timeout = options.timeoutMs ? (argument ? ', ' : '') + 'timeout=' + options.timeoutMs : '';
-  const call = action === 'select' ? 'select_option' : action === 'read' ? 'inner_text' : action;
+  const call = action === 'select' ? 'select_option' : action === 'upload' ? 'set_input_files' : action === 'read' ? 'inner_text' : action;
   const assertion = expected === undefined ? 'to_be_visible' : 'to_have_text';
   const statement = action === 'assert' ? `expect(${target}).${assertion}(${argument ?? ''}${timeout})` :
     `${target}.${call}(${argument ?? ''}${timeout})`;
@@ -104,10 +104,11 @@ function documentMethod(lines: string[], description: string, parameters: string
 
 function interactionMethods(lines: string[], rows: readonly Row[], unique: (base: string) => string, options: GenerationOptions) {
   for (const {name, action} of rows) {
+    if (action === 'press') continue;
     if (action === 'assert' ? !options.assertions : !options.interactions) continue;
     const verb = action === 'assert' ? 'assert_visible' : action;
     const method = unique(options.methodPrefix + (options.methodOrder === 'member-first' ? `${name}_${verb}` : `${verb}_${name}`));
-    const needsValue = action === 'fill' || action === 'select';
+    const needsValue = action === 'fill' || action === 'select' || action === 'upload';
     const read = action === 'read';
     lines.push('', `    ${ioMethod(options)} ${method}(self${needsValue ? ', value' + typed(options, 'str') : ''})${returns(options, read ? 'str' : 'None')}:`);
     if (options.documentation) documentMethod(lines, `${verb.replaceAll('_', ' ')} using the ${name} locator.`, needsValue ? ['value'] : [], read);
@@ -131,7 +132,7 @@ function configuredMethods(lines: string[], rows: readonly Row[], options: Gener
         }
         parameters.set(step.argument, step.defaultValue);
       }
-      return '        ' + operation(options, target.name, step.action, step.argument, step.expectedText);
+      return '        ' + operation(options, target.name, step.action, step.key ? quote(step.key) : step.argument, step.expectedText);
     });
     const parametersText = [...parameters].map(([name, value]) =>
       name + typed(options, 'str') + (value === undefined ? '' : ' = ' + quote(value)));

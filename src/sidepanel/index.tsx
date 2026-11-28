@@ -14,9 +14,11 @@ import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
 import {Review} from './review';
 import {GenerationControls, useGeneration} from './generation';
 import {resolveGeneration, type GenerationOptions} from '../core/generation-profile';
+import {WorkflowControls, useWorkflow} from './workflow';
+import {associateWorkflow} from '../core/workflow';
 
 const settingsKey = 'locatorSettings';
-type PageIntent = 'scan' | 'inspect' | 'live';
+type PageIntent = 'scan' | 'inspect' | 'live' | 'record' | 'append-record';
 type SiteAccess = {site: string; intent: PageIntent; tab: number};
 
 function App() {
@@ -30,6 +32,7 @@ function App() {
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
   const generation = useGeneration();
+  const recorder = useWorkflow();
   const [compareProfile, setCompareProfile] = useState('');
   const [artifactCheck, setArtifactCheck] = useState<{source: string; pythonMinor: number; message: string}>();
   const [embedded, setEmbedded] = useState<FrameScan[]>([]);
@@ -177,6 +180,8 @@ function App() {
       if (active?.id === undefined || !active.url) throw Error('No active page is available.');
       const url = new URL(active.url);
       const webPage = url.protocol === 'http:' || url.protocol === 'https:';
+      if ((intent === 'record' || intent === 'append-record') && !webPage) throw Error('Record on a regular HTTP or HTTPS page.');
+      if (intent === 'append-record') recorder.requireScope(active.id, url.origin);
       if (!webPage && url.protocol !== 'file:') {
         throw Error('Open an HTTP or HTTPS page. Browser settings and internal pages are restricted.');
       }
@@ -207,6 +212,12 @@ function App() {
       }
 
       const documentId = injected[0]?.documentId;
+      if (intent === 'record' || intent === 'append-record') {
+        const [current] = await chrome.tabs.query({active: true, currentWindow: true});
+        if (current?.id !== active.id || current.url !== active.url) throw Error('The active page changed. Start recording again.');
+        recorder.start(active.id, url.origin, documentId, intent === 'append-record');
+        return;
+      }
       if (tab !== active.id) {
         setEmbedded([]);
         setEmbeddedMessage('');
@@ -347,6 +358,22 @@ function App() {
     {settings && <Settings settings={settings} onSave={saveSettings}/>}
     <RuntimeControls runtime={runtime} extensionId={chrome.runtime.id}/>
     <GenerationControls generation={generation} download={save} model={model}/>
+    <WorkflowControls recorder={recorder} profile={generation.profile} ready={!!settings && !busy}
+      open={append => void openPage(append ? 'append-record' : 'record')} save={save}
+      validate={runtime.status?.connected && !runtime.busy && model?.documentKey ? runtime.validateImported : undefined}
+      observationEpoch={runtime.observationEpoch}
+      associate={model?.documentKey && tab !== null ? async workflow => {
+        const [active] = await chrome.tabs.query({active: true, currentWindow: true});
+        if (active?.id !== tab) throw Error('Switch to the scanned tab before associating targets.');
+        const result: unknown = await chrome.tabs.sendMessage(tab, {
+          type: 'POM_WORKFLOW_MATCH', documentKey: model.documentKey, steps: workflow.steps,
+        }, {frameId: 0});
+        if (!Array.isArray(result) || result.length !== workflow.steps.length ||
+          !result.every(value => value === null || typeof value === 'string')) throw Error('The scanned document changed. Scan it again.');
+        if (latestValidation.current.model !== model) throw Error('The page model changed. Review the workflow again.');
+        const next = associateWorkflow(workflow, model, result, generation.profile.options.methods);
+        setModel(current => current === model ? next : current);
+      } : undefined}/>
     <Review model={model} setModel={setModel} operation={runtime.sourceOperation} download={save}
       onProfileSuggestion={generation.setSuggestion}
       frameworkOptions={frameworkOptions}

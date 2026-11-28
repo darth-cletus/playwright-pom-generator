@@ -3,10 +3,11 @@ import {reserved} from './python-names';
 export interface GenerationDependency {name: string; module: string; type: string}
 export interface GenerationStep {
   elementId: string;
-  action: 'click' | 'fill' | 'check' | 'select' | 'read' | 'assert';
+  action: 'click' | 'dblclick' | 'fill' | 'clear' | 'press' | 'check' | 'uncheck' | 'select' | 'upload' | 'read' | 'assert';
   argument?: string;
   defaultValue?: string;
   expectedText?: string;
+  key?: 'Enter' | 'Escape';
 }
 export interface GenerationMethod {name: string; steps: GenerationStep[]}
 
@@ -137,17 +138,24 @@ export function resolveGeneration(...layers: Partial<GenerationOptions>[]): Gene
   }
   if (!Array.isArray(options.methods) || options.methods.length > 30 || options.methods.some(method =>
     !object(method) || typeof method.name !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(method.name) || !symbol(method.name) ||
-    !Array.isArray(method.steps) || !method.steps.length || method.steps.length > 20 || method.steps.some((step, index) => {
+    !Array.isArray(method.steps) || !method.steps.length || method.steps.length > 250 || method.steps.some((step, index) => {
       if (!object(step) || typeof step.elementId !== 'string' || !step.elementId || step.elementId.length > 160 ||
-        !['click', 'fill', 'check', 'select', 'read', 'assert'].includes(String(step.action)) ||
+        !['click', 'dblclick', 'fill', 'clear', 'press', 'check', 'uncheck', 'select', 'upload', 'read', 'assert'].includes(String(step.action)) ||
         (step.action === 'read' && index !== method.steps.length - 1)) return true;
       if (step.expectedText !== undefined && (step.action !== 'assert' || typeof step.expectedText !== 'string' ||
         step.expectedText.length > 200)) return true;
-      if (step.action !== 'fill' && step.action !== 'select') return step.argument !== undefined || step.defaultValue !== undefined;
+      if (step.action === 'press' ? step.key !== 'Enter' && step.key !== 'Escape' : step.key !== undefined) return true;
+      if (step.action !== 'fill' && step.action !== 'select' && step.action !== 'upload') {
+        return step.argument !== undefined || step.defaultValue !== undefined;
+      }
+      if (step.action === 'upload' && step.defaultValue !== undefined) return true;
       return typeof step.argument !== 'string' || !symbol(step.argument) || (step.defaultValue !== undefined &&
         (typeof step.defaultValue !== 'string' || step.defaultValue.length > 200));
     }))) throw Error('Use named methods with supported steps, selected element IDs, and explicit fill or select parameters.');
   if (new Set(options.methods.map(item => item.name)).size !== options.methods.length) throw Error('Use distinct configured method names.');
+  if (options.methods.reduce((total, method) => total + method.steps.length, 0) > 600) {
+    throw Error('Use at most 600 action steps across configured methods.');
+  }
   if (options.methods.some(method => options.dependencies.some(dependency => dependency.name === method.name))) {
     throw Error('A configured method conflicts with a constructor dependency.');
   }
@@ -155,8 +163,8 @@ export function resolveGeneration(...layers: Partial<GenerationOptions>[]): Gene
     throw Error('Enable assertions before adding assertion steps.');
   }
   options.methods = options.methods.map(({name, steps}) => ({name,
-    steps: steps.map(({elementId, action, argument, defaultValue, expectedText}) =>
-      ({elementId, action, argument, defaultValue, expectedText}))}));
+    steps: steps.map(({elementId, action, argument, defaultValue, expectedText, key}) =>
+      ({elementId, action, argument, defaultValue, expectedText, ...(key ? {key} : {})}))}));
   if (typeof options.navigationPath !== 'string' || (options.navigationPath &&
     (!/^\/(?!\/)[^?#\\\s]{0,255}$/.test(options.navigationPath) || /[\x00-\x1f\x7f]/.test(options.navigationPath)))) {
     throw Error('Enter a relative navigation path such as /checkout.');
