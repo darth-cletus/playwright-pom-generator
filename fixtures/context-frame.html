@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Context frame</title>
+<div id="secure"></div>
+<output id="result"></output>
+<script>
+  const root = document.querySelector('#secure').attachShadow({mode: 'open'});
+  root.innerHTML = '<label for="payment">Cardholder</label><input id="payment" data-testid="payment">' +
+    '<button data-testid="submit">Confirm</button>';
+  root.querySelector('input').value = 'synthetic-scoped-payment-value';
+  root.querySelector('button').addEventListener('click', () => {
+    document.querySelector('#result').textContent = 'Frame confirmed';
+  });
+  if (/\/context-frame(?:\.html)?$/.test(location.pathname) && location.search !== '?nested') {
+    const nested = document.createElement('iframe');
+    nested.id = 'nested';
+    nested.src = 'context-frame.html?nested';
+    root.append(nested);
+  }
+</script>

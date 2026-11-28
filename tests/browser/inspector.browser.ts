@@ -39,10 +39,14 @@ beforeAll(async () => {
   const login = await readFile(new URL('../../fixtures/login.html', import.meta.url));
   const components = await readFile(new URL('../../fixtures/components.html', import.meta.url));
   const dynamic = await readFile(new URL('../../fixtures/dynamic.html', import.meta.url));
+  const scoped = await readFile(new URL('../../fixtures/contexts.html', import.meta.url));
+  const nested = await readFile(new URL('../../fixtures/context-frame.html', import.meta.url));
   server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.end(request.url === '/login' ? login : request.url?.startsWith('/components') ? components :
-      request.url?.startsWith('/dynamic') ? dynamic : fixture);
+      request.url?.startsWith('/dynamic') ? dynamic :
+      request.url?.startsWith('/contexts') ? scoped :
+      request.url?.startsWith('/context-') ? nested : fixture);
   });
   await new Promise<void>(resolveListening => server.listen(0, '127.0.0.1', resolveListening));
   const address = server.address();
@@ -55,7 +59,9 @@ beforeAll(async () => {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   // The extension is loaded normally. Pregrant only the loopback fixture host
   // because browser permission prompts are outside Playwright's page APIs.
-  manifest.host_permissions = ['http://127.0.0.1/*'];
+  manifest.host_permissions = ['http://127.0.0.1/*', 'http://localhost/*'];
+  manifest.permissions.push('webNavigation');
+  manifest.optional_permissions = manifest.optional_permissions.filter((permission: string) => permission !== 'webNavigation');
   await writeFile(manifestPath, JSON.stringify(manifest));
   debugPort = await freePort();
   context = await chromium.launchPersistentContext(join(temp, 'profile'), {
@@ -270,6 +276,107 @@ async function download(name: string) {
   if (!file) throw Error('No exported file');
   return readFile(file, 'utf8');
 }
+
+it('scans nested frames and open roots, and exports independently scoped Python locators', async () => {
+  await app.goto(fixtureUrl + '/contexts');
+  await app.frameLocator('#billing').frameLocator('#nested').getByTestId('submit').waitFor();
+  const started = performance.now();
+  await clickPanel('Scan active page');
+  await expect.poll(() => panel.getByText(/Browsing contexts \(\d+\)/).count()).toBe(1);
+  console.info(`Mixed frame and shadow scan reached the panel in ${Math.round(performance.now() - started)} ms.`);
+  await panel.getByText(/Browsing contexts \(\d+\)/).evaluate((node: HTMLElement) => node.click());
+  await expect.poll(() => panel.getByText(/iframe\[id="isolated"\].*unavailable/).count()).toBe(1);
+  const rows = panel.locator('article').filter({has: panel.getByRole('checkbox', {name: 'Confirm', exact: true})});
+  expect(await rows.count()).toBe(5);
+  const payment = rows.filter({hasText: /iframe.*billing.*#secure|iframe.*billing.*div\[id="secure"\]/}).filter({hasNotText: 'nested'});
+  expect(await payment.count()).toBe(1);
+  await clickPanel('Clear all');
+  await payment.getByRole('checkbox').check();
+  await payment.getByRole('textbox').fill('embedded_confirm');
+  const code = await download('Export Python');
+  expect(code).toContain('.content_frame.');
+  const execution = spawnSync(python, ['-c', [
+    'import sys',
+    'from playwright.sync_api import sync_playwright',
+    'namespace = {}',
+    'exec(sys.stdin.buffer.read().decode("utf-8"), namespace)',
+    'with sync_playwright() as playwright:',
+    '    browser = playwright.chromium.connect_over_cdp(sys.argv[1], no_defaults=True)',
+    '    page = next(page for context in browser.contexts for page in context.pages if page.url.endswith("/contexts"))',
+    '    checkout = namespace["GeneratedPage"](page)',
+    '    checkout.embedded_confirm.click()',
+    '    assert page.frame_locator("#billing").locator("#result").text_content() == "Frame confirmed"',
+  ].join('\n'), `http://127.0.0.1:${debugPort}`], {input: code, encoding: 'utf8', timeout: 10_000});
+  expect(execution.status, execution.error?.message ?? execution.stderr).toBe(0);
+  await payment.getByRole('button', {name: 'Highlight'}).click();
+  await expect.poll(() => app.locator('[data-pom-overlay]').count()).toBe(1);
+  await app.bringToFront();
+  await start();
+  await app.frameLocator('#billing').getByTestId('submit').hover();
+  await expect.poll(() => target().textContent()).toContain('Confirm');
+  await app.frameLocator('#billing').getByTestId('submit').click();
+  await expect.poll(() => panel.getByText('Element already in collection.').count()).toBe(1);
+}, 20_000);
+
+it('correlates an authorized cross-origin frame with its owner and routes inspection to its document', async () => {
+  await app.goto(fixtureUrl + '/contexts?cross-origin');
+  await app.frameLocator('#external-payment').getByTestId('payment').waitFor();
+  await clickPanel('Scan active page');
+  const contexts = panel.getByText(/Browsing contexts \(\d+\)/);
+  await contexts.evaluate((node: HTMLElement) => node.click());
+  await clickPanel(`Scan embedded frames from http://localhost:${new URL(fixtureUrl).port}`);
+  await expect.poll(() => panel.getByText('1 embedded frame(s) accessible.').count()).toBe(1);
+  const inspect = panel.getByRole('button', {name: /Inspect iframe.*external-payment/});
+  await inspect.evaluate((node: HTMLButtonElement) => node.click());
+  await app.frameLocator('#external-payment').getByTestId('payment').hover();
+  await expect.poll(() => target().textContent()).toContain('Cardholder');
+  await app.frameLocator('#external-payment').getByTestId('payment').click();
+  const row = panel.locator('article').filter({hasText: /iframe.*external-payment.*secure/})
+    .filter({hasNotText: 'nested'})
+    .filter({has: panel.getByRole('checkbox', {name: 'Cardholder', exact: true})});
+  expect(await row.count()).toBe(1);
+  await expect.poll(() => row.getByRole('checkbox').isChecked()).toBe(false);
+  await row.getByRole('checkbox').check();
+  expect(await panel.locator('textarea').inputValue()).toContain('external-payment');
+  const json = await download('Export JSON');
+  expect(json).not.toContain('synthetic-scoped-payment-value');
+  const exported = JSON.parse(json);
+  expect(exported.schemaVersion).toBe(3);
+  expect(exported.documentKey).toBeUndefined();
+  expect(exported.elements.every((element: PageModel['elements'][number]) => !element.referenceId)).toBe(true);
+  if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+    const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+    await mkdir(output, {recursive: true});
+    await panel.screenshot({path: join(output, 'scoped-iframe-inspector.png')});
+  }
+}, 20_000);
+
+it('refreshes live contexts after embedded navigation and preserves unavailable rows', async () => {
+  await app.goto(fixtureUrl + '/contexts');
+  await clickPanel('Enable live discovery');
+  const status = panel.getByRole('region', {name: 'Live discovery'}).getByRole('status');
+  await expect.poll(() => status.textContent()).toContain('/contexts');
+  await app.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.id = 'dynamic-frame';
+    frame.srcdoc = '<button id="review">Review order</button>';
+    document.body.append(frame);
+  });
+  const review = panel.locator('article').filter({hasText: 'dynamic-frame'})
+    .filter({has: panel.getByRole('checkbox', {name: 'Review order', exact: true})});
+  await expect.poll(() => review.count()).toBe(1);
+  await review.getByRole('textbox').fill('review_order');
+  await app.evaluate(() => {
+    const frame = document.querySelector<HTMLIFrameElement>('#dynamic-frame')!;
+    frame.srcdoc = '<button id="submit">Pay order</button>';
+  });
+  await expect.poll(() => panel.getByRole('checkbox', {name: 'Pay order', exact: true}).count()).toBe(1);
+  await expect.poll(() => review.textContent()).toContain('Unavailable');
+  expect(await review.getByRole('textbox').inputValue()).toBe('review_order');
+  await app.locator('#dynamic-frame').evaluate(frame => frame.remove());
+  await expect.poll(() => panel.locator('article').filter({has: panel.getByRole('checkbox', {name: 'Pay order', exact: true})})
+    .getByText(/Unavailable in the current application state/).count()).toBe(1);
+}, 20_000);
 
 it('inspects repeated plans in the actual extension and preserves edits across duplicate picks', async () => {
   await start();
@@ -683,6 +790,19 @@ it('pairs the actual extension with Python and validates selected locator eviden
     if (process.env.POM_INSPECTOR_SCREENSHOTS) {
       await panel.screenshot({path: join(process.env.POM_INSPECTOR_SCREENSHOTS, 'components-runtime.png')});
     }
+    await app.goto(fixtureUrl + '/contexts?cross-origin');
+    await app.frameLocator('#external-payment').getByTestId('payment').waitFor();
+    await clickPanel('Scan active page');
+    await panel.getByText(/Browsing contexts \(\d+\)/).evaluate((node: HTMLElement) => node.click());
+    await clickPanel(`Scan embedded frames from http://localhost:${new URL(fixtureUrl).port}`);
+    await expect.poll(() => panel.getByText('1 embedded frame(s) accessible.').count()).toBe(1);
+    const payment = panel.locator('article').filter({hasText: /iframe.*external-payment.*secure/})
+      .filter({hasNotText: 'nested'})
+      .filter({has: panel.getByRole('checkbox', {name: 'Cardholder', exact: true})});
+    await payment.getByRole('button', {name: 'Validate current locator'}).click();
+    await expect.poll(() => payment.getByText(/Current.*unique-target.*identity confirmed/).count()).toBe(1);
+    await app.frameLocator('#external-payment').getByTestId('payment').evaluate(node => node.setAttribute('disabled', ''));
+    await expect.poll(() => payment.getByText(/Historical.*unique-target/).count()).toBe(1);
   } finally {
     service.kill();
     await exited;

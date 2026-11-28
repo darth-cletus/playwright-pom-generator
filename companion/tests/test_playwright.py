@@ -6,13 +6,93 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 from pom_validator.browser import debugger_url
+from pom_validator.contracts import ValidationRequest
 from pom_validator.service import Service, Settings
+from pom_validator.validation import measure
 
 
 def port_number():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+def test_frame_and_shadow_locator_identity():
+    async def exercise():
+        attribute = "data-pom-validation-" + "a" * 32
+        nonce = "b" * 32
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch()
+            try:
+                page = await browser.new_page()
+                await page.set_content(
+                    '<iframe id="correct" srcdoc="<section></section>"></iframe>'
+                    '<iframe id="other" srcdoc="<section></section>"></iframe>'
+                )
+                await page.evaluate(
+                    "([key, value]) => document.documentElement.setAttribute(key, value)",
+                    [attribute, nonce],
+                )
+                for owner in ("#correct", "#other"):
+                    await (
+                        page.frame_locator(owner)
+                        .locator("section")
+                        .evaluate(
+                            """(host, [attribute, nonce]) => {
+                          const root = host.attachShadow({mode: 'open'});
+                          const button = document.createElement('button');
+                          button.textContent = 'Confirm';
+                          if (nonce) button.setAttribute(attribute, nonce);
+                          root.append(button);
+                        }""",
+                            [
+                                f"{attribute}-target",
+                                nonce if owner == "#correct" else "",
+                            ],
+                        )
+                    )
+                locators = [
+                    {
+                        "strategy": "frame",
+                        "root": {"strategy": "css", "selector": owner},
+                        "child": {
+                            "strategy": "chain",
+                            "root": {"strategy": "css", "selector": "section"},
+                            "child": {
+                                "strategy": "role",
+                                "role": "button",
+                                "name": "Confirm",
+                            },
+                        },
+                    }
+                    for owner in ("#correct", "#other", "iframe")
+                ]
+                request = ValidationRequest.parse(
+                    {
+                        "requestId": "frame-test",
+                        "browserId": "test-browser",
+                        "documentKey": "test-document",
+                        "correlation": {
+                            "attribute": attribute,
+                            "nonce": nonce,
+                            "target": True,
+                        },
+                        "locators": locators,
+                    }
+                )
+                results = [
+                    await measure(page, locator, request)
+                    for locator in request.locators
+                ]
+                assert results[0]["status"] == "unique-target", results
+                assert results[0]["identity"] == "confirmed"
+                assert results[1]["status"] == "stale-target"
+                assert results[2]["rootCount"] == 2
+                assert results[2]["status"] == "validation-error"
+            finally:
+                await browser.close()
+
+    asyncio.run(exercise())
 
 
 def test_real_python_playwright_cdp_identity_states_and_trials(tmp_path):
