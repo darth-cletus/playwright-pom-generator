@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {defaultSettings, parseSettings, selectedCandidate, type LocatorSettings} from '../core/locator';
 import {mergePage, serializePage, type ElementModel, type PageModel} from '../core/model';
-import {artifactHashes, generate, generatePackage, generationManifest} from '../core/python';
+import {artifactHashes, generate, generateIntegrationSnippet, generatePackage, generationManifest} from '../core/python';
 import {pythonPackageZip} from '../core/python-package';
 import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
@@ -29,6 +29,7 @@ function App() {
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
   const generation = useGeneration();
+  const [compareProfile, setCompareProfile] = useState('');
   const [artifactCheck, setArtifactCheck] = useState<{source: string; message: string}>();
   const [embedded, setEmbedded] = useState<FrameScan[]>([]);
   const [embeddedMessage, setEmbeddedMessage] = useState('');
@@ -145,6 +146,7 @@ function App() {
   let code = '';
   let generationError = '';
   let files: Record<string, string> = {};
+  let comparison = '';
   if (model) {
     try {
       code = generate(model, runtime.policy, generation.profile);
@@ -152,6 +154,11 @@ function App() {
     } catch (cause) {
       code = '';
       generationError = cause instanceof Error ? cause.message : String(cause);
+    }
+    const comparisonProfile = generation.profiles.find(profile => profile.id === compareProfile);
+    if (comparisonProfile) {
+      try {comparison = generate(model, runtime.policy, comparisonProfile);}
+      catch (cause) {comparison = cause instanceof Error ? cause.message : String(cause);}
     }
   }
 
@@ -477,6 +484,13 @@ function App() {
         {Object.keys(files).map(path => <option key={path} value={path}>{path}</option>)}
       </select>}
       <textarea aria-label="Python source preview" readOnly value={files[file] ?? code}/>
+      <label>Compare profile
+        <select value={compareProfile} onChange={event => setCompareProfile(event.target.value)}>
+          <option value="">None</option>
+          {generation.profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+        </select>
+      </label>
+      {comparison && <textarea aria-label="Comparison Python source" readOnly value={comparison}/>}
       {runtime.status && <button disabled={!code} onClick={async () => {
         const source = files[file] ?? code;
         try {
@@ -503,6 +517,10 @@ function App() {
             setError(cause instanceof Error ? cause.message : String(cause));
           }
         }}>Export Python package</button>
+        <button disabled={!code} onClick={() => {
+          try {save('integration.py', generateIntegrationSnippet(model, runtime.policy, generation.profile));}
+          catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
+        }}>Export integration snippet</button>
         <button disabled={!code} onClick={async () => {
           try {
             const artifacts = generatePackage(model, runtime.policy, generation.profile);

@@ -5,7 +5,7 @@ import {build} from 'esbuild';
 import {chromium, selectors, type Browser, type Page, type Locator as PlaywrightLocator} from 'playwright';
 import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import {defaultSettings, type Locator, type LocatorSettings} from '../../src/core/locator';
-import {generate, generatePackage} from '../../src/core/python';
+import {generate, generateIntegrationSnippet, generatePackage} from '../../src/core/python';
 import type {PageModel} from '../../src/core/model';
 import type * as helpers from './helpers';
 import {generationProfiles} from '../../src/core/generation-profile';
@@ -105,7 +105,8 @@ it('executes generated sync framework and async property profiles with Python Pl
   const data = {html, sync: generate(model, 'browser', frameworkOptions),
     async: generate(model, 'browser', {...asyncProfile, options: {...asyncProfile.options, methods: [
       {name: 'expect_loaded', steps: [{elementId: 'visible', action: 'assert', expectedText: 'Save'}]},
-    ]}}), files: generatePackage(model, 'browser', frameworkOptions)};
+    ]}}), files: generatePackage(model, 'browser', frameworkOptions),
+    snippet: generateIntegrationSnippet(model, 'browser', frameworkOptions)};
   const python = process.env.POM_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
   const result = spawnSync(python, ['-c', [
     'import asyncio, importlib, json, logging, sys, tempfile, types',
@@ -146,6 +147,9 @@ it('executes generated sync framework and async property profiles with Python Pl
     '        sys.path.insert(0, temporary)',
     '        packaged = importlib.import_module("automation.pages.generated_page").GeneratedPage(page, checkout.logger)',
     '        assert packaged.get_fields_widget_at(0).logger is checkout.logger',
+    '        glue = {}',
+    '        exec(compile(data["snippet"], "<snippet>", "exec"), glue)',
+    '        assert glue["create_page_object"](page, checkout.logger).framework_logger is checkout.logger',
     '        sys.path.pop(0)',
     '    browser.close()',
     'namespace = {}',

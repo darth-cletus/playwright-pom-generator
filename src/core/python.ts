@@ -91,6 +91,17 @@ function operation(options: GenerationOptions, name: string, action: Action, arg
   return `${action === 'read' ? 'return ' : ''}${awaited(options)}${statement}`;
 }
 
+function documentMethod(lines: string[], description: string, parameters: string[], readsText = false) {
+  if (!parameters.length && !readsText) {
+    lines.push(`        """${description}"""`);
+    return;
+  }
+  lines.push(`        """${description}`);
+  if (parameters.length) lines.push('', '        Args:', ...parameters.map(name => `            ${name}: Value supplied by the caller.`));
+  if (readsText) lines.push('', '        Returns:', '            The locator text.');
+  lines.push('        """');
+}
+
 function interactionMethods(lines: string[], rows: readonly Row[], unique: (base: string) => string, options: GenerationOptions) {
   for (const {name, action} of rows) {
     if (action === 'assert' ? !options.assertions : !options.interactions) continue;
@@ -99,7 +110,7 @@ function interactionMethods(lines: string[], rows: readonly Row[], unique: (base
     const needsValue = action === 'fill' || action === 'select';
     const read = action === 'read';
     lines.push('', `    ${ioMethod(options)} ${method}(self${needsValue ? ', value' + typed(options, 'str') : ''})${returns(options, read ? 'str' : 'None')}:`);
-    if (options.documentation) lines.push(`        """${verb.replaceAll('_', ' ')} using the ${name} locator."""`);
+    if (options.documentation) documentMethod(lines, `${verb.replaceAll('_', ' ')} using the ${name} locator.`, needsValue ? ['value'] : [], read);
     if (options.logger) lines.push(`        self.${options.logger}.info(${quote(verb + ' ' + name)})`);
     lines.push('        ' + operation(options, name, action, needsValue ? 'value' : undefined));
   }
@@ -126,7 +137,8 @@ function configuredMethods(lines: string[], rows: readonly Row[], options: Gener
       name + typed(options, 'str') + (value === undefined ? '' : ' = ' + quote(value)));
     lines.push('', `    ${ioMethod(options)} ${method.name}(self${parameters.size ? ', *, ' + parametersText.join(', ') : ''})${returns(options,
       method.steps.at(-1)?.action === 'read' ? 'str' : 'None')}:`);
-    if (options.documentation) lines.push(`        """Run the configured ${method.name} steps."""`);
+    if (options.documentation) documentMethod(lines, `Run the configured ${method.name} steps.`, [...parameters.keys()],
+      method.steps.at(-1)?.action === 'read');
     if (options.logger) lines.push(`        self.${options.logger}.info(${quote(method.name)})`);
     lines.push(...statements);
   }
@@ -371,6 +383,21 @@ export async function artifactHashes(files: Readonly<Record<string, string>>) {
     return [path, [...hash].map(byte => byte.toString(16).padStart(2, '0')).join('')] as const;
   }));
   return Object.fromEntries(entries);
+}
+
+export function generateIntegrationSnippet(model: PageModel, policy: RuntimePolicy, profile: GenerationProfile): string {
+  const options = resolveGeneration(profile.options, model.generation ?? {});
+  const {className} = render(model, policy, options);
+  const module = options.pageModule || pythonModule(className);
+  const factory = names([className])('create_page_object');
+  const argumentsList = options.dependencies.map(item => ', ' + item.name + '=' + item.name).join('');
+  const source = [
+    playwrightImports(options, ['Page']), ...dependencyImports(options),
+    `from ${options.packageName}.${options.pagesDirectory}.${module} import ${className}`, '', '',
+    `def ${factory}(page${typed(options, 'Page')}${dependencyParameters(options)})${returns(options, className)}:`,
+    `    return ${className}(page${argumentsList})`, '',
+  ].join('\n');
+  return format(source, options);
 }
 
 export function generationManifest(model: PageModel, policy: RuntimePolicy, profile: GenerationProfile, paths: string[]) {

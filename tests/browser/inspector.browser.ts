@@ -291,6 +291,9 @@ it('persists a custom generation profile and exports deterministic artifact meta
   await expect.poll(() => panel.getByText(/Use a safe Python package name/).count()).toBe(1);
   await panel.getByLabel('Active generation profile').selectOption('typed-async');
   await expect.poll(() => preview.inputValue()).toContain('playwright.async_api');
+  await panel.getByLabel('Compare profile').selectOption('sync');
+  expect(await panel.getByRole('textbox', {name: 'Comparison Python source'}).inputValue()).toContain('playwright.sync_api');
+  await panel.getByLabel('Compare profile').selectOption('');
   await clickPanel('Duplicate profile');
   await panel.getByLabel('Profile name').fill('Fixture async profile');
   await panel.getByLabel('Package name').fill('fixture_automation');

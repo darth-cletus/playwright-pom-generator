@@ -1,6 +1,6 @@
 import {expect, it} from 'vitest';
 import {generationProfiles, readGenerationProfile, resolveGeneration} from '../src/core/generation-profile';
-import {artifactHashes, generate, generatePackage, generationManifest} from '../src/core/python';
+import {artifactHashes, generate, generateIntegrationSnippet, generatePackage, generationManifest} from '../src/core/python';
 import {pythonPackageZip} from '../src/core/python-package';
 import type {PageModel} from '../src/core/model';
 
@@ -38,6 +38,8 @@ it('renders framework imports and constructor injection without logging values',
   expect(code).toContain('self._email: Locator');
   expect(code).toContain('self.logger.info("fill _email")');
   expect(code).toContain('self._email.fill(value)');
+  expect(generateIntegrationSnippet(model, 'browser', profile)).toContain('return Checkout(page, logger=logger)');
+  expect(generate(model, 'browser', generationProfiles[1])).toContain('Args:\n            value:');
 });
 
 it('rejects unsafe options and renders header templates as comments', () => {

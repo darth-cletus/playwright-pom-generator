@@ -6,7 +6,7 @@ The v0.9.0 extension and companion add configurable Python generation. Default s
 
 - `src/core/generation-profile.ts` validates versioned profiles, options, known values, bounded headers, dependencies and explicit methods. Effective precedence is defaults, profile, and optional page overrides.
 - `src/core/python.ts` uses the existing automation and locator models for class and component output. It handles synchronous constructors, asynchronous operations, imports, formatting, and deterministic artifact hashes.
-- `src/sidepanel/generation.tsx` manages local profiles, previews resolved settings, imports and exports JSON, and opens inferred drafts. The side panel can preview, copy or export a single Python file, package or generation manifest.
+- `src/sidepanel/generation.tsx` manages local profiles, previews resolved settings, imports and exports JSON, and opens inferred drafts. The side panel compares profiles and can preview, copy or export a single Python file, package, integration snippet or generation manifest.
 - `companion/src/pom_validator/source.py` reports explicit Playwright import modes and source line endings. Existing authenticated syntax analysis can check one preview.
 - [ADR 0006](decisions/0006-generation-profiles.md) records the design, contract and extension points.
 
@@ -190,7 +190,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.104 | Documentation generation is configurable. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.105 | Class docstrings can be generated. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.106 | Method docstrings can be generated. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
-| AC-009.107 | Parameter and return documentation can be generated. | FAIL | Class and method docstrings are supported. Structured parameter and return documentation is pending. |
+| AC-009.107 | Parameter and return documentation can be generated. | PASS | Generated docstrings list modeled arguments and describe text returns. |
 | AC-009.108 | Documentation does not invent unsupported behavior. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.109 | Logging generation is configurable. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.110 | Injected logger configuration is supported. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
@@ -230,7 +230,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.144 | Framework compatibility checks are available. | FAIL | The profile validates structure and shows unresolved assumptions. It does not inspect external framework signatures or installed imports. |
 | AC-009.145 | New page objects can integrate with trusted existing frameworks. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.146 | New components can integrate with trusted existing frameworks. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
-| AC-009.147 | Integration snippets can be generated. | FAIL | Examples and files are generated. A separate integration snippet artifact is pending. |
+| AC-009.147 | Integration snippets can be generated. | PASS | The generated package factory snippet imports and constructs the trusted fixture. |
 | AC-009.148 | Existing source is not automatically regenerated. | PASS | Generation creates local output artifacts and source review stays revision-bound. Imported Python never executes during analysis. |
 | AC-009.149 | Existing source additions use controlled POM-008 transformations. | FAIL | POM-008 preserves and replaces approved locator expressions. Its source insertion workflow remains open. |
 | AC-009.150 | Existing custom business logic remains preserved. | PASS | Generation creates local output artifacts and source review stays revision-bound. Imported Python never executes during analysis. |
@@ -242,7 +242,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.156 | Users can preview generated source. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
 | AC-009.157 | Users can navigate generated files. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
 | AC-009.158 | Users can review generation warnings. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
-| AC-009.159 | Users can compare output between profiles. | FAIL | Profiles can be switched in place. Side-by-side comparison is pending. |
+| AC-009.159 | Users can compare output between profiles. | PASS | The browser test shows async output alongside a synchronous comparison without changing the active profile. |
 | AC-009.160 | Individual generated files can be copied. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
 | AC-009.161 | Individual generated files can be exported. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
 | AC-009.162 | Multi-file packages can be exported. | PASS | Unpacked side panel previews source, selects package files and exports code and a deterministic manifest. |
