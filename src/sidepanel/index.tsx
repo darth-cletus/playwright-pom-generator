@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {defaultSettings, parseSettings, selectedCandidate, type LocatorSettings} from '../core/locator';
 import {mergePage, serializePage, type ElementModel, type PageModel} from '../core/model';
-import {generate, generatePackage} from '../core/python';
+import {artifactHashes, generate, generatePackage, generationManifest} from '../core/python';
 import {pythonPackageZip} from '../core/python-package';
 import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
@@ -12,6 +12,7 @@ import {useLive} from './live';
 import {contextLabel, type ContextBoundary} from '../core/context';
 import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
 import {Review} from './review';
+import {GenerationControls, useGeneration} from './generation';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect' | 'live';
@@ -27,6 +28,8 @@ function App() {
   const running = useRef(false);
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
+  const generation = useGeneration();
+  const [artifactCheck, setArtifactCheck] = useState<{source: string; message: string}>();
   const [embedded, setEmbedded] = useState<FrameScan[]>([]);
   const [embeddedMessage, setEmbeddedMessage] = useState('');
   const [contextFilter, setContextFilter] = useState('');
@@ -144,9 +147,10 @@ function App() {
   let files: Record<string, string> = {};
   if (model) {
     try {
-      code = generate(model, runtime.policy);
-      if (file && model.components?.length) files = generatePackage(model, runtime.policy);
+      code = generate(model, runtime.policy, generation.profile);
+      if (file) files = generatePackage(model, runtime.policy, generation.profile);
     } catch (cause) {
+      code = '';
       generationError = cause instanceof Error ? cause.message : String(cause);
     }
   }
@@ -332,7 +336,9 @@ function App() {
     <h1>Page Object Generator</h1>
     {settings && <Settings settings={settings} onSave={saveSettings}/>}
     <RuntimeControls runtime={runtime} extensionId={chrome.runtime.id}/>
+    <GenerationControls generation={generation} download={save} model={model}/>
     <Review model={model} setModel={setModel} operation={runtime.sourceOperation} download={save}
+      onProfileSuggestion={generation.setSuggestion}
       runtimeCheck={runtime.status?.connected ? runtime.validateImported : undefined} observationEpoch={runtime.observationEpoch}
       observe={async locators => {
       if (tab === null || !model?.documentKey) throw Error('Scan the target page first.');
@@ -464,28 +470,49 @@ function App() {
       })}
       <h2>Python preview</h2>
       {generationError && <p className="error">{generationError}</p>}
-      {!!model.components?.length && <select aria-label="Python output file" value={file} onFocus={() => {
+      {<select aria-label="Python output file" value={files[file] === undefined ? 'single' : file} onFocus={() => {
         if (!file) setFile('single');
       }} onChange={event => setFile(event.target.value)}>
         <option value="single">Single Python file</option>
         {Object.keys(files).map(path => <option key={path} value={path}>{path}</option>)}
       </select>}
-      <textarea readOnly value={files[file] ?? code}/>
+      <textarea aria-label="Python source preview" readOnly value={files[file] ?? code}/>
+      {runtime.status && <button disabled={!code} onClick={async () => {
+        const source = files[file] ?? code;
+        try {
+          await runtime.sourceOperation('source-analyze', {source});
+          setArtifactCheck({source, message: 'The companion parsed this Python file successfully.'});
+        } catch (cause) {
+          setArtifactCheck({source, message: cause instanceof Error ? cause.message : String(cause)});
+        }
+      }}>Check preview syntax</button>}
+      {artifactCheck?.source === (files[file] ?? code) && <p role="status">{artifactCheck.message}</p>}
       <div className="actions">
         <button disabled={!code} onClick={() => save(model.className.trim() + '.py', code)}>Export Python</button>
+        {files[file] !== undefined && <button onClick={() => save(file.split('/').at(-1)!, files[file])}>Export preview file</button>}
         <button disabled={!code} onClick={() => navigator.clipboard.writeText(files[file] ?? code)
           .catch(cause => setError(String(cause)))}>Copy Python</button>
         <button onClick={() => {
           try {save('page-model.json', serializePage(model), 'application/json');}
           catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
         }}>Export JSON</button>
-        {!!model.components?.length && <button disabled={!code} onClick={() => {
+        <button disabled={!code} onClick={() => {
           try {
-            download('generated-python.zip', pythonPackageZip(generatePackage(model, runtime.policy)));
+            download('generated-python.zip', pythonPackageZip(generatePackage(model, runtime.policy, generation.profile)));
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause));
           }
-        }}>Export Python package</button>}
+        }}>Export Python package</button>
+        <button disabled={!code} onClick={async () => {
+          try {
+            const artifacts = generatePackage(model, runtime.policy, generation.profile);
+            const manifest = generationManifest(model, runtime.policy, generation.profile, Object.keys(artifacts));
+            save('generation-manifest.json', JSON.stringify({...manifest, sha256: await artifactHashes(artifacts)}, null, 2),
+              'application/json');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        }}>Export generation manifest</button>
       </div>
     </>}
   </>;

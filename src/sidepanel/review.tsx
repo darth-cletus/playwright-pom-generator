@@ -6,11 +6,12 @@ import {serializePage} from '../core/model';
 import {selectedCandidate} from '../core/locator';
 import type {Locator} from '../core/locator';
 import type {RuntimeResult} from '../core/runtime';
+import type {GenerationOptions} from '../core/generation-profile';
 
 interface SourceFile {name: string; source: string; analysis: SourceAnalysis}
 interface Preview {source: string; patch: string; file: SourceFile; observation: PageModel | null}
 
-export function Review({model, setModel, operation, download, observe, runtimeCheck, observationEpoch}: {
+export function Review({model, setModel, operation, download, observe, runtimeCheck, observationEpoch, onProfileSuggestion}: {
   model: PageModel | null;
   setModel: (model: PageModel) => void;
   operation: (kind: 'source-analyze' | 'source-transform', payload: object) => Promise<Record<string, unknown>>;
@@ -18,6 +19,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
   observe: (locators: Locator[]) => Promise<(number | null)[]>;
   runtimeCheck?: (locators: Locator[]) => Promise<RuntimeResult[]>;
   observationEpoch: number;
+  onProfileSuggestion: (proposal: {name: string; options: Partial<GenerationOptions>; evidence: string}) => void;
 }) {
   const [files, setFiles] = useState<SourceFile[]>([]);
   const [index, setIndex] = useState(0);
@@ -176,6 +178,19 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
         </select>
       </label>
       <p>{file.analysis.classes.length} classes · {file.analysis.entries.length} supported locator assignments</p>
+      {!!file.analysis.generationConventions?.playwrightImports.length && <button onClick={() => {
+        const conventions = file.analysis.generationConventions!;
+        const modes = new Set(conventions.playwrightImports.map(item => item.execution));
+        if (modes.size !== 1) {
+          setStatus('The source imports sync and async Playwright. Choose an execution mode explicitly.');
+          return;
+        }
+        const execution = conventions.playwrightImports[0].execution;
+        const sourceLines = conventions.playwrightImports.map(item => item.line).join(', ');
+        onProfileSuggestion({name: file.name + ' profile', options: {execution, lineEnding: conventions.lineEnding},
+          evidence: `${file.name} imports ${execution} Playwright on line ${sourceLines}. Review framework bases and constructor contracts manually.`});
+        setStatus('Open Generation profile to review the inferred settings.');
+      }}>Suggest generation profile</button>}
       {file.analysis.classes.length > 0 && <ul>{file.analysis.classes.map(entry =>
         <li key={entry.line}>{entry.name} · line {entry.line}{entry.bases.length ? ` · Bases ${entry.bases.join(', ')}` : ''}</li>)}</ul>}
       {file.analysis.diagnostics.length > 0 && <ul>{file.analysis.diagnostics.map(item =>

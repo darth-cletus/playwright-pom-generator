@@ -13,6 +13,10 @@ export interface SourceAnalysis {
   entries: SourceEntry[];
   classes: {name: string; line: number; bases: string[]}[];
   diagnostics: {line: number; code: 'unsupported-locator'}[];
+  generationConventions?: {
+    playwrightImports: {execution: 'sync' | 'async'; line: number}[];
+    lineEnding: 'crlf' | 'lf';
+  };
 }
 
 export function readAnalysis(value: unknown): SourceAnalysis {
@@ -27,6 +31,13 @@ export function readAnalysis(value: unknown): SourceAnalysis {
       typeof entry.editable === 'boolean' && Number.isSafeInteger(entry.line) && strings(entry.dependencies) &&
       locatorIsValid(entry.locator as Locator))) {
     throw Error('Invalid source analysis response.');
+  }
+  const conventions = value.generationConventions;
+  if (conventions !== undefined && (!record(conventions) ||
+    (conventions.lineEnding !== 'lf' && conventions.lineEnding !== 'crlf') || !Array.isArray(conventions.playwrightImports) ||
+    conventions.playwrightImports.length > 20 || !conventions.playwrightImports.every(entry =>
+      record(entry) && (entry.execution === 'sync' || entry.execution === 'async') && Number.isSafeInteger(entry.line)))) {
+    throw Error('Invalid source convention response.');
   }
   return value as unknown as SourceAnalysis;
 }

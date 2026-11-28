@@ -150,6 +150,16 @@ def analyze(body):
     for key in repeated:
         constants.pop(key)
     classes, entries, diagnostics = [], [], []
+    playwright_imports = [
+        {
+            "execution": stmt.module.rsplit(".", 1)[1].split("_", 1)[0],
+            "line": stmt.lineno,
+        }
+        for stmt in tree.body
+        if isinstance(stmt, ast.ImportFrom)
+        and stmt.level == 0
+        and stmt.module in ("playwright.sync_api", "playwright.async_api")
+    ]
     for cls in tree.body:
         if not isinstance(cls, ast.ClassDef):
             continue
@@ -242,6 +252,12 @@ def analyze(body):
         "classes": classes,
         "entries": entries,
         "diagnostics": diagnostics,
+        "generationConventions": {
+            "playwrightImports": playwright_imports[:20],
+            "lineEnding": "crlf"
+            if "\r\n" in source and "\n" not in source.replace("\r\n", "")
+            else "lf",
+        },
     }
 
 

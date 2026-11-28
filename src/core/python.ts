@@ -1,10 +1,11 @@
-import {selectedCandidate, testIdAttributes, type Locator} from './locator';
+import {locatorIsValid, selectedCandidate, testIdAttributes, type Locator} from './locator';
 import {supportsSchema, type PageModel} from './model';
 import {identifier, reserved} from './python-names';
 import {currentEvidence, runtimeRejects, type RuntimePolicy} from './runtime';
 import {componentRootCandidate, memberCandidate, pythonModule, validateComponentGraph, type ComponentDefinition} from './components';
 import type {Action} from './model';
 import {stableTestId} from './lifecycle';
+import {resolveGeneration, type GenerationOptions, type GenerationProfile} from './generation-profile';
 
 export {identifier} from './python-names';
 
@@ -25,7 +26,7 @@ export function pythonLocator(locator: Locator, page = 'page'): string {
   }
 }
 
-type Row = {name: string; action: Action; locator: Locator};
+type Row = {id: string; name: string; action: Action; locator: Locator};
 
 function names(initial: string[]) {
   const used = new Set(initial);
@@ -37,15 +38,97 @@ function names(initial: string[]) {
   };
 }
 
-function interactionMethods(lines: string[], rows: readonly Row[], unique: (base: string) => string) {
+const typed = (options: GenerationOptions, type: string) => options.annotations === 'none' ? '' : ': ' + type;
+const returns = (options: GenerationOptions, type: string) => options.annotations === 'none' ? '' : ' -> ' + type;
+const ioMethod = (options: GenerationOptions) => options.execution === 'async' ? 'async def' : 'def';
+const awaited = (options: GenerationOptions) => options.execution === 'async' ? 'await ' : '';
+const access = (options: GenerationOptions, name: string) => 'self.' + name + (options.declaration === 'method' ? '()' : '');
+const dependencyAlias = (index: number) => '_Dependency' + (index + 1);
+const dependencyParameters = (options: GenerationOptions) =>
+  options.dependencies.map((dependency, index) => ', ' + dependency.name + typed(options, dependencyAlias(index))).join('');
+const dependencyArguments = (options: GenerationOptions) =>
+  options.dependencies.map(dependency => ', ' + dependency.name + '=self.' + dependency.name).join('');
+const dependencyFields = (options: GenerationOptions) => options.dependencies.map(item => `        self.${item.name} = ${item.name}`);
+const dependencyImports = (options: GenerationOptions) => options.annotations === 'none' ? [] :
+  options.dependencies.map((item, index) => `from ${item.module} import ${item.type} as ${dependencyAlias(index)}`);
+const componentBaseImport = (options: GenerationOptions) => options.componentBaseClass
+  ? [`from ${options.componentBaseModule} import ${options.componentBaseClass} as _FrameworkComponent`] : [];
+const baseArguments = (options: GenerationOptions) => options.forwardBaseDependencies
+  ? options.dependencies.map(item => ', ' + item.name + '=' + item.name).join('') : '';
+
+function declare(lines: string[], declarations: string[], options: GenerationOptions, name: string, locator: string) {
+  if (options.declaration === 'constructor') {
+    lines.push(`        self.${name}${options.annotations === 'typed' ? ': Locator' : ''} = ${locator}`);
+  } else {
+    declarations.push('');
+    if (options.declaration === 'property') declarations.push('    @property');
+    declarations.push(`    def ${name}(self)${returns(options, 'Locator')}:`, `        return ${locator}`);
+  }
+}
+
+function declaredLocator(options: GenerationOptions, locator: Locator, receiver: string, context: string,
+  name: string, constants: string[], unique: (base: string) => string): string {
+  if (options.selectorConstants && locator.strategy === 'css') {
+    const constant = unique('CSS_' + name.toUpperCase());
+    constants.push(`    ${constant} = ${quote(locator.selector)}`);
+    return `${receiver}.locator(self.${constant})`;
+  }
+  return `${receiver}.${pythonLocator(locator, context)}`;
+}
+
+function addConstants(lines: string[], constants: string[], options: GenerationOptions) {
+  if (constants.length) lines.splice(options.documentation ? 3 : 1, 0, ...constants, '');
+}
+
+function operation(options: GenerationOptions, name: string, action: Action, argument?: string, expected?: string) {
+  const target = access(options, name);
+  if (expected !== undefined) argument = quote(expected);
+  const timeout = options.timeoutMs ? (argument ? ', ' : '') + 'timeout=' + options.timeoutMs : '';
+  const call = action === 'select' ? 'select_option' : action === 'read' ? 'inner_text' : action;
+  const assertion = expected === undefined ? 'to_be_visible' : 'to_have_text';
+  const statement = action === 'assert' ? `expect(${target}).${assertion}(${argument ?? ''}${timeout})` :
+    `${target}.${call}(${argument ?? ''}${timeout})`;
+  return `${action === 'read' ? 'return ' : ''}${awaited(options)}${statement}`;
+}
+
+function interactionMethods(lines: string[], rows: readonly Row[], unique: (base: string) => string, options: GenerationOptions) {
   for (const {name, action} of rows) {
-    if (action === 'assert') continue;
-    const method = unique(`${action}_${name}`);
+    if (action === 'assert' ? !options.assertions : !options.interactions) continue;
+    const verb = action === 'assert' ? 'assert_visible' : action;
+    const method = unique(options.methodPrefix + (options.methodOrder === 'member-first' ? `${name}_${verb}` : `${verb}_${name}`));
     const needsValue = action === 'fill' || action === 'select';
     const read = action === 'read';
-    const call = action === 'select' ? 'select_option' : read ? 'inner_text' : action;
-    lines.push('', `    def ${method}(self${needsValue ? ', value: str' : ''}) -> ${read ? 'str' : 'None'}:`,
-      `        ${read ? 'return ' : ''}self.${name}.${call}(${needsValue ? 'value' : ''})`);
+    lines.push('', `    ${ioMethod(options)} ${method}(self${needsValue ? ', value' + typed(options, 'str') : ''})${returns(options, read ? 'str' : 'None')}:`);
+    if (options.documentation) lines.push(`        """${verb.replaceAll('_', ' ')} using the ${name} locator."""`);
+    if (options.logger) lines.push(`        self.${options.logger}.info(${quote(verb + ' ' + name)})`);
+    lines.push('        ' + operation(options, name, action, needsValue ? 'value' : undefined));
+  }
+}
+
+function configuredMethods(lines: string[], rows: readonly Row[], options: GenerationOptions) {
+  const targets = new Map(rows.map(row => [row.id, row]));
+  for (const method of options.methods) {
+    const parameters = new Map<string, string | undefined>();
+    const statements = method.steps.map(step => {
+      const target = targets.get(step.elementId);
+      if (!target || (target.action !== step.action && step.action !== 'assert')) {
+        throw Error(`Review the selected target and action in configured method ${method.name}.`);
+      }
+      if (step.argument) {
+        if (parameters.has(step.argument) && parameters.get(step.argument) !== step.defaultValue) {
+          throw Error(`Conflicting defaults for ${step.argument} in ${method.name}.`);
+        }
+        parameters.set(step.argument, step.defaultValue);
+      }
+      return '        ' + operation(options, target.name, step.action, step.argument, step.expectedText);
+    });
+    const parametersText = [...parameters].map(([name, value]) =>
+      name + typed(options, 'str') + (value === undefined ? '' : ' = ' + quote(value)));
+    lines.push('', `    ${ioMethod(options)} ${method.name}(self${parameters.size ? ', *, ' + parametersText.join(', ') : ''})${returns(options,
+      method.steps.at(-1)?.action === 'read' ? 'str' : 'None')}:`);
+    if (options.documentation) lines.push(`        """Run the configured ${method.name} steps."""`);
+    if (options.logger) lines.push(`        self.${options.logger}.info(${quote(method.name)})`);
+    lines.push(...statements);
   }
 }
 
@@ -64,10 +147,16 @@ function assertComponentEvidence(definition: ComponentDefinition, instanceId: st
 }
 
 function componentClass(definition: ComponentDefinition, definitions: readonly ComponentDefinition[],
-  policy: RuntimePolicy, locators: Locator[]): string {
-  const unique = names(['root', 'page']);
+  policy: RuntimePolicy, locators: Locator[], options: GenerationOptions): string {
+  const unique = names(['root', 'page', ...options.dependencies.map(item => item.name)]);
   const optionalNames: string[] = [];
-  const lines = [`class ${definition.className.trim()}:`, '    def __init__(self, root: Locator) -> None:', '        self.root = root'];
+  const lines = [`class ${definition.className.trim()}${options.componentBaseClass ? '(_FrameworkComponent)' : ''}:`,
+    ...(options.documentation ? ['    """Reusable component with scoped Playwright locators."""', ''] : []),
+    `    def __init__(self, root${typed(options, 'Locator')}${dependencyParameters(options)})${returns(options, 'None')}:`];
+  if (options.superRoot) lines.push(`        super().__init__(root${baseArguments(options)})`);
+  lines.push('        self.root = root', ...dependencyFields(options));
+  const declarations: string[] = [];
+  const constants: string[] = [];
   const rows: Row[] = [];
   for (const member of definition.members.filter(item => item.selected)) {
     const candidate = memberCandidate(member, definition.runtime);
@@ -79,11 +168,13 @@ function componentClass(definition: ComponentDefinition, definitions: readonly C
       assertComponentEvidence(definition, observation.instanceId, candidate.id, policy, member.id,
         member.optional && !observation.referenceId);
     }
-    const name = unique(identifier(member.name));
-    rows.push({name, action: member.action, locator: candidate.locator});
+    const name = unique(options.memberPrefix + identifier(member.name));
+    rows.push({id: member.id, name, action: member.action, locator: candidate.locator});
     if (member.optional) optionalNames.push(name);
     locators.push(candidate.locator);
-    lines.push(`        self.${name} = root.${pythonLocator(candidate.locator, 'root.page')}`);
+    const receiver = options.declaration === 'constructor' ? 'root' : 'self.root';
+    declare(lines, declarations, options, name,
+      declaredLocator(options, candidate.locator, receiver, receiver + '.page', name, constants, unique));
   }
   const nestedMethods: string[] = [];
   for (const link of definition.children) {
@@ -107,26 +198,35 @@ function componentClass(definition: ComponentDefinition, definitions: readonly C
     if (link.collection) {
       lines.push(`        self.${name} = ${locator}`);
       const method = unique('get_' + name + '_at');
-      nestedMethods.push('', `    def ${method}(self, index: int) -> ${className}:`,
-        `        return ${className}(self.${name}.nth(index))`);
-    } else lines.push(`        self.${name} = ${className}(${locator})`);
+      nestedMethods.push('', `    def ${method}(self, index${typed(options, 'int')})${returns(options, className)}:`,
+        `        return ${className}(self.${name}.nth(index)${dependencyArguments(options)})`);
+    } else lines.push(`        self.${name} = ${className}(${locator}${dependencyArguments(options)})`);
   }
-  for (const name of optionalNames) lines.push('', `    def ${unique('has_' + name)}(self) -> bool:`, `        return self.${name}.count() == 1`);
-  interactionMethods(lines, rows, unique);
+  lines.push(...declarations);
+  for (const name of optionalNames) lines.push('', `    ${ioMethod(options)} ${unique('has_' + name)}(self)${returns(options, 'bool')}:`,
+    `        return ${awaited(options)}${access(options, name)}.count() == 1`);
+  interactionMethods(lines, rows, unique, options);
+  addConstants(lines, constants, options);
   return [...lines, ...nestedMethods].join('\n');
 }
 
-function render(model: PageModel, policy: RuntimePolicy) {
+function render(model: PageModel, policy: RuntimePolicy, options: GenerationOptions) {
   const className = model.className.trim();
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(className) || reserved.has(className)) {
     throw Error('Invalid Python class name');
   }
   const definitions = model.components ?? [];
+  if (model.elements.length > 3000 || definitions.length > 100) throw Error('The page model exceeds generation limits.');
+  const reservedImports = new Set(['Page', 'Locator', 'expect', '_FrameworkBase', '_FrameworkComponent', '__debug__',
+    ...options.dependencies.map((_, index) => dependencyAlias(index))]);
+  if (reservedImports.has(className) || definitions.some(definition => reservedImports.has(definition.className.trim()))) {
+    throw Error('Use class names distinct from generated imports.');
+  }
   if (!supportsSchema(model.schemaVersion)) {
     throw Error('Unsupported page object schema version.');
   }
   validateComponentGraph(definitions, className);
-  const unique = names(['page', 'navigate', 'PATH']);
+  const unique = names(['page', 'navigate', 'PATH', ...options.dependencies.map(item => item.name), ...options.methods.map(item => item.name)]);
   const rows = model.elements.filter(element => element.selected).map(element => {
     const candidate = selectedCandidate(element);
     const lazyUnavailable = policy === 'browser' && element.availability === 'unavailable' && stableTestId(candidate);
@@ -142,13 +242,20 @@ function render(model: PageModel, policy: RuntimePolicy) {
     if (!candidate || (candidate.validation.status !== 'unique-target' && evidence?.status !== 'unique-target')) {
       throw Error(`Choose a locator that uniquely matches ${element.name}`);
     }
-    return {name: unique(identifier(element.name)), action: element.action, locator: candidate.locator};
+    return {id: element.id, name: unique(options.memberPrefix + identifier(element.name)), action: element.action, locator: candidate.locator};
   });
   const locators = rows.map(row => row.locator);
-  const componentSources = definitions.map(definition => ({definition, body: componentClass(definition, definitions, policy, locators)}));
-  const lines = [`class ${className}:`, '    def __init__(self, page: Page) -> None:', '        self.page = page'];
+  const componentSources = definitions.map(definition => ({definition, body: componentClass(definition, definitions, policy, locators, options)}));
+  const lines = [`class ${className}${options.baseClass ? '(_FrameworkBase)' : ''}:`,
+    ...(options.documentation ? ['    """Page object with Playwright locators."""', ''] : []),
+    `    def __init__(self, page${typed(options, 'Page')}${dependencyParameters(options)})${returns(options, 'None')}:`];
+  if (options.superPage) lines.push(`        super().__init__(page${baseArguments(options)})`);
+  lines.push('        self.page = page', ...dependencyFields(options));
+  const declarations: string[] = [];
+  const constants: string[] = [];
   for (const {name, locator} of rows) {
-    lines.push(`        self.${name} = page.${pythonLocator(locator)}`);
+    const receiver = options.declaration === 'constructor' ? 'page' : 'self.page';
+    declare(lines, declarations, options, name, declaredLocator(options, locator, receiver, receiver, name, constants, unique));
   }
   const factories: string[] = [];
   for (const definition of definitions.filter(item => item.exposeInstances !== false)) {
@@ -161,7 +268,7 @@ function render(model: PageModel, policy: RuntimePolicy) {
       assertComponentEvidence(definition, instance.id, candidate.id, policy);
       if (definition.collection?.parameter) assertComponentEvidence(definition, instance.id, 'parameter', policy);
       locators.push(candidate.locator);
-      lines.push(`        self.${unique(identifier(instance.name))} = ${component}(page.${pythonLocator(candidate.locator)})`);
+      lines.push(`        self.${unique(identifier(instance.name))} = ${component}(page.${pythonLocator(candidate.locator)}${dependencyArguments(options)})`);
     }
     const collection = definition.collection;
     if (!collection) continue;
@@ -171,18 +278,26 @@ function render(model: PageModel, policy: RuntimePolicy) {
     lines.push(`        self.${attribute} = page.${pythonLocator(collection.locator)}`);
     const count = unique('get_' + stem + '_count');
     const at = unique('get_' + stem + '_at');
-    factories.push('', `    def ${count}(self) -> int:`, `        return self.${attribute}.count()`,
-      '', `    def ${at}(self, index: int) -> ${component}:`, `        return ${component}(self.${attribute}.nth(index))`);
+    factories.push('', `    ${ioMethod(options)} ${count}(self)${returns(options, 'int')}:`,
+      `        return ${awaited(options)}self.${attribute}.count()`,
+      '', `    def ${at}(self, index${typed(options, 'int')})${returns(options, component)}:`,
+      `        return ${component}(self.${attribute}.nth(index)${dependencyArguments(options)})`);
     if (collection.parameter) {
       const argument = collection.parameter.name;
       const method = unique('get_' + stem);
-      factories.push('', `    def ${method}(self, ${argument}: str) -> ${component}:`,
+      factories.push('', `    def ${method}(self, ${argument}${typed(options, 'str')})${returns(options, component)}:`,
         `        root = self.${attribute}.filter(has=self.page.get_by_role("heading", name=${argument}, exact=True))`,
-        `        return ${component}(root)`);
+        `        return ${component}(root${dependencyArguments(options)})`);
     }
   }
-  interactionMethods(lines, rows, unique);
+  if (options.navigationPath) factories.push('', `    ${ioMethod(options)} navigate(self)${returns(options, 'None')}:`,
+    `        ${awaited(options)}self.page.goto(${quote(options.navigationPath)}${options.timeoutMs ? ', timeout=' + options.timeoutMs : ''})`);
+  lines.push(...declarations);
+  configuredMethods(lines, rows, options);
+  interactionMethods(lines, rows, unique, options);
+  addConstants(lines, constants, options);
   const testAttributes = new Set(locators.flatMap(testIdAttributes));
+  if (!locators.every(locator => locatorIsValid(locator))) throw Error('A locator uses unsupported composition or selector syntax.');
   if (testAttributes.size > 1) throw Error('Use one Playwright test ID attribute per generated page object');
   const [testAttribute] = testAttributes;
   const note = testAttribute && testAttribute !== 'data-testid'
@@ -190,29 +305,78 @@ function render(model: PageModel, policy: RuntimePolicy) {
   return {className, componentSources, page: [...lines, ...factories].join('\n'), note};
 }
 
-export function generate(model: PageModel, policy: RuntimePolicy = 'browser'): string {
-  const {componentSources, page, note} = render(model, policy);
-  const imports = componentSources.length
-    ? 'from __future__ import annotations\n\nfrom playwright.sync_api import Locator, Page'
-    : 'from playwright.sync_api import Page';
-  return [imports + note, ...componentSources.map(item => item.body), page].join('\n\n\n') + '\n';
+function playwrightImports(options: GenerationOptions, symbols: string[]): string {
+  return `from playwright.${options.execution}_api import ${symbols.join(', ')}`;
 }
 
-export function generatePackage(model: PageModel, policy: RuntimePolicy = 'browser'): Record<string, string> {
-  const {componentSources, className, page, note} = render(model, policy);
-  const files: Record<string, string> = {'generated/__init__.py': '', 'generated/pages/__init__.py': '',
-    'generated/components/__init__.py': ''};
+function format(source: string, options: GenerationOptions): string {
+  if (source.length > 4_000_000) throw Error('A generated file exceeds the output size limit.');
+  const indented = options.indent === 4 ? source : source.replace(/^ +/gm, indent => ' '.repeat(indent.length / 2));
+  return options.lineEnding === 'crlf' ? indented.replaceAll('\n', '\r\n') : indented;
+}
+
+function header(options: GenerationOptions, className: string, profile?: GenerationProfile): string {
+  if (!options.header) return '';
+  const expanded = options.header.replace(/\{\{(class|profile)\}\}/g, (_, field) => field === 'class' ? className : profile?.name ?? 'Basic synchronous');
+  return '\n\n' + expanded.split(/\r\n|\r|\n/).map(line => '# ' + line.replace(/[\x00-\x1f\x7f]/g, ' ')).join('\n');
+}
+
+function pageImports(options: GenerationOptions, includeComponents: boolean) {
+  const locatorType = options.annotations === 'typed' || (options.annotations !== 'none' && options.declaration !== 'constructor');
+  const symbols = [...(includeComponents && options.annotations !== 'none' || locatorType ? ['Locator'] : []), 'Page'];
+  if (options.assertions) symbols.push('expect');
+  return [playwrightImports(options, symbols),
+    ...(options.baseClass ? [`from ${options.baseModule} import ${options.baseClass} as _FrameworkBase`] : []),
+    ...(includeComponents ? componentBaseImport(options) : []), ...dependencyImports(options)];
+}
+
+export function generate(model: PageModel, policy: RuntimePolicy = 'browser', profile?: GenerationProfile): string {
+  const options = resolveGeneration(profile?.options ?? {}, model.generation ?? {});
+  const {className, componentSources, page, note} = render(model, policy, options);
+  const imports = (componentSources.length ? 'from __future__ import annotations\n\n' : '') + pageImports(options, !!componentSources.length).join('\n');
+  return format([imports + note + header(options, className, profile), ...componentSources.map(item => item.body), page].join('\n\n\n') + '\n', options);
+}
+
+export function generatePackage(model: PageModel, policy: RuntimePolicy = 'browser', profile?: GenerationProfile): Record<string, string> {
+  const options = resolveGeneration(profile?.options ?? {}, model.generation ?? {});
+  const {componentSources, className, page, note} = render(model, policy, options);
+  const root = options.packageName;
+  const pages = root + '/' + options.pagesDirectory;
+  const components = root + '/' + options.componentsDirectory;
+  const files: Record<string, string> = {[root + '/__init__.py']: '', [pages + '/__init__.py']: '',
+    [components + '/__init__.py']: ''};
   const names = new Map(componentSources.map(({definition}) => [definition.id, definition.className.trim()]));
   for (const {definition, body} of componentSources) {
     const dependencies = [...new Set(definition.children.map(link => names.get(link.definitionId)!))].sort();
-    const imports = dependencies.map(name => `from .${pythonModule(name)} import ${name}`);
-    files[`generated/components/${pythonModule(definition.className.trim())}.py`] =
-      ['from playwright.sync_api import Locator', ...imports].join('\n') + '\n\n\n' + body + '\n';
+    const prefix = options.packageImports === 'absolute' ? `${root}.${options.componentsDirectory}.` : '.';
+    const imports = dependencies.map(name => `from ${prefix}${pythonModule(name)} import ${name}`);
+    const symbols = ['Locator', ...(options.assertions ? ['expect'] : [])];
+    files[`${components}/${pythonModule(definition.className.trim())}.py`] =
+      format([playwrightImports(options, symbols), ...componentBaseImport(options), ...dependencyImports(options), ...imports].join('\n') +
+        header(options, definition.className.trim(), profile) +
+        '\n\n\n' + body + '\n', options);
   }
   const imports = componentSources.filter(({definition}) => definition.exposeInstances !== false)
     .map(({definition}) => definition.className.trim()).sort()
-    .map(name => `from ..components.${pythonModule(name)} import ${name}`);
-  files[`generated/pages/${pythonModule(className)}.py`] =
-    ['from playwright.sync_api import Page', ...imports].join('\n') + note + '\n\n\n' + page + '\n';
+    .map(name => `from ${options.packageImports === 'absolute' ? root + '.' : '..'}${options.componentsDirectory}.${pythonModule(name)} import ${name}`);
+  files[`${pages}/${options.pageModule || pythonModule(className)}.py`] =
+    format([...pageImports(options, false), ...imports].join('\n') + note + header(options, className, profile) + '\n\n\n' + page + '\n', options);
   return files;
+}
+
+export async function artifactHashes(files: Readonly<Record<string, string>>) {
+  const entries = await Promise.all(Object.keys(files).sort().map(async path => {
+    const bytes = new TextEncoder().encode(files[path]);
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    return [path, [...hash].map(byte => byte.toString(16).padStart(2, '0')).join('')] as const;
+  }));
+  return Object.fromEntries(entries);
+}
+
+export function generationManifest(model: PageModel, policy: RuntimePolicy, profile: GenerationProfile, paths: string[]) {
+  const options = resolveGeneration(profile.options, model.generation ?? {});
+  return {schemaVersion: 1, profile: {id: profile.id, revision: profile.revision},
+    className: model.className.trim(), execution: options.execution, policy, files: [...paths].sort(),
+    selectedElements: model.elements.filter(element => element.selected).length, components: model.components?.length ?? 0,
+    framework: options.baseModule ? {module: options.baseModule, className: options.baseClass} : undefined};
 }
