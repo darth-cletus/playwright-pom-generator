@@ -14,6 +14,7 @@ from . import PROTOCOL, VERSION
 from .browser import BrowserConnection, BrowserUnavailable, PageUnavailable
 from .contracts import STRATEGIES, RequestError, ValidationRequest, object_value, string
 from .validation import measure, unavailable
+from .source import analyze, transform
 
 LOG = logging.getLogger(__name__)
 MAX_BYTES = 128 * 1024
@@ -50,6 +51,7 @@ class Service:
             "playwrightVersion": version("playwright"),
             "pythonVersion": platform.python_version(),
             "strategies": STRATEGIES,
+            "sourceAnalysis": 1,
             "connected": connection.connected,
             "browserId": connection.identity if connection.connected else None,
             "browserVersion": connection.browser.version
@@ -66,6 +68,12 @@ class Service:
                 }
             if route == "/status":
                 return 200, self.status()
+            if route in ("/source-analyze", "/source-transform"):
+                if self.lock.locked():
+                    return 429, {"error": "busy", "message": "The companion is busy."}
+                async with self.lock:
+                    operation = analyze if route == "/source-analyze" else transform
+                    return 200, await asyncio.to_thread(operation, body)
             if route == "/cancel":
                 task = self.pending.get(string(body.get("requestId"), "request ID", 80))
                 if task:
@@ -268,7 +276,16 @@ class Handler(BaseHTTPRequestHandler):
             )
         operation = (
             route
-            if route in ("/status", "/connect", "/disconnect", "/validate", "/cancel")
+            if route
+            in (
+                "/status",
+                "/connect",
+                "/disconnect",
+                "/validate",
+                "/cancel",
+                "/source-analyze",
+                "/source-transform",
+            )
             else "unknown"
         )
         LOG.info("event=request operation=%s status=%s", operation, code)

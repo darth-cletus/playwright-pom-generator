@@ -2,7 +2,7 @@ import {protocolVersion, resultStatuses, type CompanionStatus, type RuntimeResul
 
 export interface Pairing {port: number; token: string}
 
-export async function request(pairing: Pairing, operation: 'status' | 'connect' | 'disconnect' | 'validate' | 'cancel',
+export async function request(pairing: Pairing, operation: 'status' | 'connect' | 'disconnect' | 'validate' | 'cancel' | 'source-analyze' | 'source-transform',
   payload: object = {}, signal?: AbortSignal): Promise<Record<string, unknown>> {
   let response: Response;
   const timeout = AbortSignal.timeout(15_000);

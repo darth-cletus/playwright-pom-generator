@@ -1,5 +1,7 @@
 # Current state
 
+POM-008 targets v0.8.0. The side panel can open JSON models, review supported Python assignments, check imported locators and prepare revision-bound source diffs. [POM-008 verification](pom-008-verification.md)
+
 POM-007 targets v0.7.0 for the extension and Python companion. Browsing contexts extend discovery, inspection, exports and runtime validation to supported frames and open shadow roots. See [verification](pom-007-verification.md) for browser coverage and acceptance gaps.
 
 POM-006 targets v0.6.0 and builds on POM-005 and the committed DEF-001 startup guard. Live discovery streams page changes into the side panel, preserves edits across eligible replacements, and attaches application revisions to Playwright evidence. The Python companion remains on protocol v1. See [POM-006 verification](pom-006-verification.md) for local evidence and outstanding acceptance work.

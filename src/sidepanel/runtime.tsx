@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, type Dispatch, type SetStateAction} from 'react';
-import {locatorKey, usesFrame, type Candidate} from '../core/locator';
+import {locatorKey, usesFrame, type Candidate, type Locator} from '../core/locator';
 import {archiveValidation, type ElementModel, type PageModel} from '../core/model';
 import {evidenceLifetime, type CompanionStatus, type Correlation, type RuntimeEvidence, type RuntimePolicy, type Trial} from '../core/runtime';
 import {readResults, readStatus, request, type Pairing} from './runtime-client';
@@ -20,6 +20,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
   const [status, setStatus] = useState<CompanionStatus>();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [observationEpoch, setObservationEpoch] = useState(0);
   const [trial, setTrial] = useState<Trial>('none');
   const [states, setStates] = useState(true);
   const [confirmTarget, setConfirmTarget] = useState(true);
@@ -41,6 +42,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
 
   function invalidate() {
     cancel();
+    setObservationEpoch(previous => previous + 1);
     setModel(archiveValidation);
   }
 
@@ -243,7 +245,45 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
     }
   }
 
-  return {port, setPort, token, setToken, status, message, busy, validating: !!batch.current,
+  async function sourceOperation(operation: 'source-analyze' | 'source-transform', payload: object) {
+    if (!pairing.current) throw Error('Pair with the local companion to analyze Python source.');
+    return request(pairing.current, operation, payload);
+  }
+  async function validateImported(locators: Locator[]) {
+    const documentKey = model?.documentKey;
+    const browserId = status?.browserId;
+    const config = pairing.current;
+    if (tab === null || !documentKey || !browserId || !config || batch.current || !locators.length || locators.length > 40) {
+      throw Error('Scan the target tab and connect the companion before validating up to 40 imported locators.');
+    }
+    const requestId = crypto.randomUUID();
+    const active = {controller: new AbortController(), requestId};
+    batch.current = active;
+    const signal = active.controller.signal;
+    setBusy(true);
+    let marker: Correlation | undefined;
+    const release = (attribute: string) => chrome.tabs.sendMessage(tab, {type: 'POM_RUNTIME_RELEASE', attribute}, {frameId: 0});
+    try {
+      const [current] = await chrome.tabs.query({active: true, currentWindow: true});
+      if (current?.id !== tab) throw Error('Switch to the inspected tab before validating.');
+      marker = await chrome.tabs.sendMessage(tab, {type: 'POM_RUNTIME_MARK', documentKey}, {frameId: 0}) ?? undefined;
+      if (!marker) throw Error('The scanned document changed. Scan again.');
+      const {attribute, nonce} = marker;
+      const data = await request(config, 'validate', {requestId, browserId, documentKey,
+        correlation: {attribute, nonce, target: false}, states: false, trial: 'none', locators}, signal);
+      const results = readResults(data, {requestId, browserId, documentKey, strategies: locators.map(locator => locator.strategy)});
+      const unchanged = await release(attribute);
+      marker = undefined;
+      if (signal.aborted || unchanged !== true) throw Error('The page changed during validation. Check again.');
+      return results;
+    } finally {
+      if (marker) await release(marker.attribute).catch(() => {});
+      batch.current = undefined;
+      setBusy(false);
+    }
+  }
+  return {port, setPort, token, setToken, status, message, busy, validating: !!batch.current, sourceOperation,
+    validateImported, observationEpoch,
     trial, setTrial, states, setStates, confirmTarget, setConfirmTarget,
     policy, setPolicy, validate, connection, cancel, invalidate};
 }

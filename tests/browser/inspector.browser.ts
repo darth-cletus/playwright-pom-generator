@@ -803,6 +803,24 @@ it('pairs the actual extension with Python and validates selected locator eviden
     await expect.poll(() => payment.getByText(/Current.*unique-target.*identity confirmed/).count()).toBe(1);
     await app.frameLocator('#external-payment').getByTestId('payment').evaluate(node => node.setAttribute('disabled', ''));
     await expect.poll(() => payment.getByText(/Historical.*unique-target/).count()).toBe(1);
+    await app.goto(fixtureUrl + '/login');
+    await clickPanel('Scan active page');
+    await expect.poll(() => panel.getByRole('checkbox', {name: 'Email', exact: true}).count()).toBe(1);
+    await panel.getByText('Manage existing page objects', {exact: true}).click();
+    const source = Buffer.from(
+      "class Login:\n    def __init__(self, page):\n        self.email_input = page.locator('#old-email')  # preserve\n",
+      'utf8');
+    const file = {name: 'login.py', mimeType: 'text/x-python', buffer: source};
+    await panel.getByLabel('Open Python files or a JSON model').setInputFiles(file);
+    await expect.poll(() => panel.getByText('Opened 1 Python file(s).').count()).toBe(1);
+    await clickPanel('Validate imported locators with Playwright');
+    await expect.poll(() => panel.getByText(/Playwright no-match/).count()).toBe(1);
+    await panel.getByRole('checkbox', {name: /Approve get_by_test_id/}).check();
+    await panel.getByLabel('Choose current source to preview approved changes').setInputFiles(file);
+    await expect.poll(() => panel.getByRole('textbox', {name: 'Source diff'}).inputValue()).toContain("get_by_test_id('email')  # preserve");
+    if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+      await panel.screenshot({path: join(process.env.POM_INSPECTOR_SCREENSHOTS, 'page-object-source-review.png')});
+    }
   } finally {
     service.kill();
     await exited;
