@@ -5,9 +5,10 @@ import {build} from 'esbuild';
 import {chromium, selectors, type Browser, type Page, type Locator as PlaywrightLocator} from 'playwright';
 import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import {defaultSettings, type Locator, type LocatorSettings} from '../../src/core/locator';
-import {generate} from '../../src/core/python';
+import {generate, generateIntegrationSnippet, generatePackage} from '../../src/core/python';
 import type {PageModel} from '../../src/core/model';
 import type * as helpers from './helpers';
+import {generationProfiles} from '../../src/core/generation-profile';
 
 declare global {
   interface Window {
@@ -78,6 +79,98 @@ async function scan() {
   await page.addScriptTag({content});
   return page.evaluate(settings => window.scanFixture(settings), defaultSettings);
 }
+
+it('executes generated sync framework and async property profiles with Python Playwright', async () => {
+  const html = '<section id="fields"><input data-testid="email"><button data-testid="save">Save</button></section>';
+  await page.setContent(html);
+  const model = await scan();
+  const email = model.elements.find(row => row.tag === 'input')!;
+  email.name = 'email';
+  const save = model.elements.find(row => row.tag === 'button')!;
+  save.name = 'save';
+  model.elements.push({...save, id: 'visible', name: 'ready', action: 'assert'});
+  const widget = await page.evaluate(settings => {
+    const {ElementCollection, describeComponent} = window.engine;
+    const component = describeComponent([document.querySelector('#fields')!], new ElementCollection(), settings, 1);
+    component.className = 'FieldsWidget';
+    component.instances[0].name = 'form';
+    component.collection = {locator: {strategy: 'css', selector: '#fields'}, count: 1};
+    return component;
+  }, defaultSettings);
+  model.components = [widget];
+  const framework = generationProfiles[5];
+  const frameworkOptions = {...framework, options: {...framework.options, assertions: true, forwardBaseDependencies: true,
+    packageImports: 'absolute' as const}};
+  const asyncProfile = generationProfiles[3];
+  const data = {html, sync: generate(model, 'browser', frameworkOptions),
+    async: generate(model, 'browser', {...asyncProfile, options: {...asyncProfile.options, methods: [
+      {name: 'expect_loaded', steps: [{elementId: 'visible', action: 'assert', expectedText: 'Save'}]},
+    ]}}), files: generatePackage(model, 'browser', frameworkOptions),
+    snippet: generateIntegrationSnippet(model, 'browser', frameworkOptions)};
+  const python = process.env.POM_PYTHON || (process.platform === 'win32' ? 'py' : 'python3');
+  const result = spawnSync(python, ['-c', [
+    'import asyncio, importlib, json, logging, sys, tempfile, types',
+    'from pathlib import Path',
+    'from playwright.sync_api import sync_playwright',
+    'from playwright.async_api import async_playwright',
+    'data = json.load(sys.stdin)',
+    'class BasePage:',
+    '    def __init__(self, page, *, logger):',
+    '        self.framework_page = page',
+    '        self.framework_logger = logger',
+    'class BaseComponent:',
+    '    def __init__(self, root, *, logger):',
+    '        self.framework_root = root',
+    '        self.framework_logger = logger',
+    'base = types.ModuleType("framework.base")',
+    'base.BasePage = BasePage',
+    'base.BaseComponent = BaseComponent',
+    'sys.modules["framework"] = types.ModuleType("framework")',
+    'sys.modules["framework.base"] = base',
+    'namespace = {}',
+    'exec(compile(data["sync"], "<sync>", "exec"), namespace)',
+    'with sync_playwright() as p:',
+    '    browser = p.chromium.launch()',
+    '    page = browser.new_page()',
+    '    page.set_content(data["html"])',
+    '    checkout = namespace["GeneratedPage"](page, logging.getLogger("fixture"))',
+    '    checkout.fill__email("sync")',
+    '    checkout.assert_visible__ready()',
+    '    assert checkout.framework_page is page and page.get_by_test_id("email").input_value() == "sync"',
+    '    assert checkout.form.logger is checkout.logger and checkout.form.framework_root is checkout.form.root',
+    '    assert checkout.form.framework_logger is checkout.framework_logger',
+    '    with tempfile.TemporaryDirectory() as temporary:',
+    '        for name, text in data["files"].items():',
+    '            path = Path(temporary) / name',
+    '            path.parent.mkdir(parents=True, exist_ok=True)',
+    '            path.write_text(text, encoding="utf-8")',
+    '        sys.path.insert(0, temporary)',
+    '        packaged = importlib.import_module("automation.pages.generated_page").GeneratedPage(page, checkout.logger)',
+    '        assert packaged.get_fields_widget_at(0).logger is checkout.logger',
+    '        glue = {}',
+    '        exec(compile(data["snippet"], "<snippet>", "exec"), glue)',
+    '        assert glue["create_page_object"](page, checkout.logger).framework_logger is checkout.logger',
+    '        sys.path.pop(0)',
+    '    browser.close()',
+    'namespace = {}',
+    'exec(compile(data["async"], "<async>", "exec"), namespace)',
+    'async def exercise():',
+    '    async with async_playwright() as p:',
+    '        browser = await p.chromium.launch()',
+    '        page = await browser.new_page()',
+    '        await page.set_content(data["html"])',
+    '        checkout = namespace["GeneratedPage"](page)',
+    '        await checkout.fill_email("async")',
+    '        await checkout.assert_visible_ready()',
+    '        await checkout.expect_loaded()',
+    '        assert await checkout.email.input_value() == "async"',
+    '        assert await checkout.get_fields_widget_count() == 1',
+    '        assert checkout.get_fields_widget_at(0).root is not None',
+    '        await browser.close()',
+    'asyncio.run(exercise())',
+  ].join('\n')], {input: JSON.stringify(data), encoding: 'utf8', timeout: 15_000});
+  expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+}, 20_000);
 
 function runtimeLocator(locator: Locator, scope: Page | PlaywrightLocator | ReturnType<PlaywrightLocator['contentFrame']> = page): PlaywrightLocator {
   const exact = {exact: true};

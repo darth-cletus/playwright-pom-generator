@@ -127,3 +127,12 @@ def test_source_workload():
         f"250-assignment analysis {analysis_ms:.1f} ms; 25 changes {(perf_counter() - started) * 1000:.1f} ms"
     )
     assert updated["source"].count("#new-") == 25
+
+
+def test_python_target_and_constructor_contract():
+    with pytest.raises(RequestError, match="syntax"):
+        analyze({"source": "type Name = str\n", "pythonMinor": 10})
+    source = "class BasePage:\n    def __init__(self, page, *, logger):\n        pass\n"
+    (base,) = analyze({"source": source, "pythonMinor": 10})["classes"]
+    assert base["constructor"]["positionals"] == ["page"]
+    assert base["constructor"]["requiredKeywords"] == ["logger"]

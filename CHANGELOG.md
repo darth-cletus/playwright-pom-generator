@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.0 (unreleased)
+
+- Added portable generation profiles, asynchronous Python, framework base classes and constructor dependencies.
+- Added configurable locator declarations, assertions, explicit interaction sequences, package layout and comment templates.
+- Added source-based profile suggestions and deterministic artifact hashes.
+
 ## v0.8.0 (unreleased)
 
 - Added JSON model import and local static analysis of Python locator assignments.

@@ -277,6 +277,45 @@ async function download(name: string) {
   return readFile(file, 'utf8');
 }
 
+it('persists a custom generation profile and exports deterministic artifact metadata', async () => {
+  await app.goto(fixtureUrl + '/login');
+  await clickPanel('Scan active page');
+  const preview = panel.getByRole('textbox', {name: 'Python source preview'});
+  await expect.poll(() => preview.inputValue()).toContain('playwright.sync_api');
+  await panel.getByText('Generation profile', {exact: true}).click();
+  await panel.getByLabel('Import generation profile').setInputFiles({
+    name: 'unsafe.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
+      schemaVersion: 1, id: 'rejected', name: 'Rejected', revision: 1, description: '', options: {packageName: '../escape'},
+    })),
+  });
+  await expect.poll(() => panel.getByText(/Use a safe Python package name/).count()).toBe(1);
+  await panel.getByLabel('Active generation profile').selectOption('typed-async');
+  await expect.poll(() => preview.inputValue()).toContain('playwright.async_api');
+  await panel.getByLabel('Compare profile').selectOption('sync');
+  expect(await panel.getByRole('textbox', {name: 'Comparison Python source'}).inputValue()).toContain('playwright.sync_api');
+  await panel.getByLabel('Compare profile').selectOption('');
+  await clickPanel('Duplicate profile');
+  await panel.getByLabel('Profile name').fill('Fixture async profile');
+  await panel.getByLabel('Package name').fill('fixture_automation');
+  await clickPanel('Save profile');
+  await clickPanel('Make default');
+  await panel.reload();
+  await panel.getByText('Generation profile', {exact: true}).click();
+  await expect.poll(() => panel.getByLabel('Active generation profile').locator('option:checked').textContent())
+    .toBe('Fixture async profile');
+  await clickPanel('Scan active page');
+  await expect.poll(() => preview.inputValue()).toContain('playwright.async_api');
+  const manifest = JSON.parse(await download('Export generation manifest'));
+  expect(manifest.execution).toBe('async');
+  expect(manifest.sha256['fixture_automation/pages/generated_page.py']).toMatch(/^[0-9a-f]{64}$/);
+  if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+    const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+    await mkdir(output, {recursive: true});
+    await panel.screenshot({path: join(output, 'generation-profile-preview.png')});
+  }
+  await clickPanel('Delete profile');
+}, 20_000);
+
 it('scans nested frames and open roots, and exports independently scoped Python locators', async () => {
   await app.goto(fixtureUrl + '/contexts');
   await app.frameLocator('#billing').frameLocator('#nested').getByTestId('submit').waitFor();
@@ -806,13 +845,21 @@ it('pairs the actual extension with Python and validates selected locator eviden
     await app.goto(fixtureUrl + '/login');
     await clickPanel('Scan active page');
     await expect.poll(() => panel.getByRole('checkbox', {name: 'Email', exact: true}).count()).toBe(1);
+    await clickPanel('Check preview syntax');
+    await expect.poll(() => panel.getByText('The companion accepted Python 3.13 syntax.').count()).toBe(1);
     await panel.getByText('Manage existing page objects', {exact: true}).click();
     const source = Buffer.from(
-      "class Login:\n    def __init__(self, page):\n        self.email_input = page.locator('#old-email')  # preserve\n",
+      "from playwright.sync_api import Page\n\nclass Login:\n    def __init__(self, page):\n        self.email_input = page.locator('#old-email')  # preserve\n",
       'utf8');
     const file = {name: 'login.py', mimeType: 'text/x-python', buffer: source};
     await panel.getByLabel('Open Python files or a JSON model').setInputFiles(file);
     await expect.poll(() => panel.getByText('Opened 1 Python file(s).').count()).toBe(1);
+    await clickPanel('Suggest generation profile');
+    await panel.getByText('Generation profile', {exact: true}).click();
+    await panel.getByText(/login.py imports sync Playwright on line 1/).waitFor();
+    await clickPanel('Review inferred profile');
+    expect(await panel.getByLabel('Profile name').inputValue()).toBe('login.py profile');
+    await clickPanel('Cancel editing');
     await clickPanel('Validate imported locators with Playwright');
     await expect.poll(() => panel.getByText(/Playwright no-match/).count()).toBe(1);
     await clickPanel('Reject proposal');

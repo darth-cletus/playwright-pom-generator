@@ -2,6 +2,7 @@ import {usesFrame, type Candidate} from './locator';
 import {currentEvidence} from './runtime';
 import {modelSchemaVersion, validateComponentGraph, type ComponentDefinition} from './components';
 import type {BrowsingContext} from './context';
+import type {GenerationOptions} from './generation-profile';
 
 export type Action = 'click' | 'fill' | 'check' | 'select' | 'read' | 'assert';
 export const contextSchemaVersion = 3;
@@ -36,6 +37,7 @@ export interface PageModel {
   schemaVersion?: number;
   application?: {route: string; stateLabel?: string};
   contexts?: BrowsingContext[];
+  generation?: Partial<GenerationOptions>;
 }
 
 export function mergePage(current: PageModel | null, incoming: PageModel): PageModel {

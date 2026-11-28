@@ -53,6 +53,7 @@ export interface CompanionStatus {
   browserId: string | null;
   connected: boolean;
   strategies?: string[];
+  pythonSyntaxTargets?: number[];
 }
 
 export function currentEvidence(evidence?: RuntimeEvidence, now = Date.now()) {

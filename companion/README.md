@@ -62,3 +62,6 @@ Companion v0.7.0 adds the `frame` locator operation to protocol v1. The extensio
 ## Static source review
 
 Companion v0.8.0 also analyzes selected UTF-8 Python text and prepares SHA-256 revision-checked diffs through authenticated protocol-v1 operations. The service does not require a browser debugging connection for static source analysis. It does not execute imported code or read projects from disk.
+## Generation support
+
+Companion v0.9.0 reports direct Playwright import modes and line endings when statically analyzing source. The side panel can use those observations to propose a profile or use the same static operation to check a generated preview. Ordinary generation runs in the extension.

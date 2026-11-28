@@ -31,7 +31,12 @@ def parse_source(body):
         encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
         if encoding != "utf-8":
             raise RequestError("Use UTF-8 Python source without a byte order mark.")
-        tree = ast.parse(source)
+        target = body.get("pythonMinor")
+        if target is not None and (
+            type(target) is not int or target not in (10, 11, 12, 13)
+        ):
+            raise RequestError("Use a Python syntax target from 3.10 through 3.13.")
+        tree = ast.parse(source, feature_version=(3, target) if target else None)
     except RequestError:
         raise
     except (SyntaxError, ValueError, RecursionError) as error:
@@ -66,6 +71,36 @@ def qualified_name(node):
         if parent:
             return parent + "." + node.attr
     return None
+
+
+def constructor_contract(cls):
+    init = next(
+        (
+            item
+            for item in cls.body
+            if isinstance(item, ast.FunctionDef) and item.name == "__init__"
+        ),
+        None,
+    )
+    if init is None or init.decorator_list:
+        return None
+    args = init.args
+    positional = [*args.posonlyargs, *args.args]
+    if not positional:
+        return None
+    return {
+        "positionals": [arg.arg for arg in positional[1:]],
+        "positionalOnly": max(0, len(args.posonlyargs) - 1),
+        "requiredPositionals": max(0, len(positional) - len(args.defaults) - 1),
+        "keywords": [arg.arg for arg in args.kwonlyargs],
+        "requiredKeywords": [
+            arg.arg
+            for arg, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
+            if default is None
+        ],
+        "acceptsArgs": args.vararg is not None,
+        "acceptsKeywords": args.kwarg is not None,
+    }
 
 
 def extract(node, constants, receivers, depth=0):
@@ -150,6 +185,16 @@ def analyze(body):
     for key in repeated:
         constants.pop(key)
     classes, entries, diagnostics = [], [], []
+    playwright_imports = [
+        {
+            "execution": stmt.module.rsplit(".", 1)[1].split("_", 1)[0],
+            "line": stmt.lineno,
+        }
+        for stmt in tree.body
+        if isinstance(stmt, ast.ImportFrom)
+        and stmt.level == 0
+        and stmt.module in ("playwright.sync_api", "playwright.async_api")
+    ]
     for cls in tree.body:
         if not isinstance(cls, ast.ClassDef):
             continue
@@ -158,6 +203,7 @@ def analyze(body):
                 "name": cls.name,
                 "line": cls.lineno,
                 "bases": [name for base in cls.bases if (name := qualified_name(base))],
+                "constructor": constructor_contract(cls),
             }
         )
         for method in cls.body:
@@ -242,6 +288,12 @@ def analyze(body):
         "classes": classes,
         "entries": entries,
         "diagnostics": diagnostics,
+        "generationConventions": {
+            "playwrightImports": playwright_imports[:20],
+            "lineEnding": "crlf"
+            if "\r\n" in source and "\n" not in source.replace("\r\n", "")
+            else "lf",
+        },
     }
 
 

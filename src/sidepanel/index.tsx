@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {defaultSettings, parseSettings, selectedCandidate, type LocatorSettings} from '../core/locator';
 import {mergePage, serializePage, type ElementModel, type PageModel} from '../core/model';
-import {generate, generatePackage} from '../core/python';
+import {artifactHashes, generate, generateIntegrationSnippet, generatePackage, generationManifest} from '../core/python';
 import {pythonPackageZip} from '../core/python-package';
 import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
@@ -12,6 +12,8 @@ import {useLive} from './live';
 import {contextLabel, type ContextBoundary} from '../core/context';
 import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
 import {Review} from './review';
+import {GenerationControls, useGeneration} from './generation';
+import {resolveGeneration, type GenerationOptions} from '../core/generation-profile';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect' | 'live';
@@ -27,6 +29,9 @@ function App() {
   const running = useRef(false);
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
+  const generation = useGeneration();
+  const [compareProfile, setCompareProfile] = useState('');
+  const [artifactCheck, setArtifactCheck] = useState<{source: string; pythonMinor: number; message: string}>();
   const [embedded, setEmbedded] = useState<FrameScan[]>([]);
   const [embeddedMessage, setEmbeddedMessage] = useState('');
   const [contextFilter, setContextFilter] = useState('');
@@ -142,12 +147,21 @@ function App() {
   let code = '';
   let generationError = '';
   let files: Record<string, string> = {};
+  let comparison = '';
+  let frameworkOptions: GenerationOptions | undefined;
+  try {frameworkOptions = resolveGeneration(generation.profile.options, model?.generation ?? {});} catch {}
   if (model) {
     try {
-      code = generate(model, runtime.policy);
-      if (file && model.components?.length) files = generatePackage(model, runtime.policy);
+      code = generate(model, runtime.policy, generation.profile);
+      if (file) files = generatePackage(model, runtime.policy, generation.profile);
     } catch (cause) {
+      code = '';
       generationError = cause instanceof Error ? cause.message : String(cause);
+    }
+    const comparisonProfile = generation.profiles.find(profile => profile.id === compareProfile);
+    if (comparisonProfile) {
+      try {comparison = generate(model, runtime.policy, comparisonProfile);}
+      catch (cause) {comparison = cause instanceof Error ? cause.message : String(cause);}
     }
   }
 
@@ -332,7 +346,10 @@ function App() {
     <h1>Page Object Generator</h1>
     {settings && <Settings settings={settings} onSave={saveSettings}/>}
     <RuntimeControls runtime={runtime} extensionId={chrome.runtime.id}/>
+    <GenerationControls generation={generation} download={save} model={model}/>
     <Review model={model} setModel={setModel} operation={runtime.sourceOperation} download={save}
+      onProfileSuggestion={generation.setSuggestion}
+      frameworkOptions={frameworkOptions}
       runtimeCheck={runtime.status?.connected ? runtime.validateImported : undefined} observationEpoch={runtime.observationEpoch}
       observe={async locators => {
       if (tab === null || !model?.documentKey) throw Error('Scan the target page first.');
@@ -464,28 +481,64 @@ function App() {
       })}
       <h2>Python preview</h2>
       {generationError && <p className="error">{generationError}</p>}
-      {!!model.components?.length && <select aria-label="Python output file" value={file} onFocus={() => {
+      {<select aria-label="Python output file" value={files[file] === undefined ? 'single' : file} onFocus={() => {
         if (!file) setFile('single');
       }} onChange={event => setFile(event.target.value)}>
         <option value="single">Single Python file</option>
         {Object.keys(files).map(path => <option key={path} value={path}>{path}</option>)}
       </select>}
-      <textarea readOnly value={files[file] ?? code}/>
+      <textarea aria-label="Python source preview" readOnly value={files[file] ?? code}/>
+      <label>Compare profile
+        <select value={compareProfile} onChange={event => setCompareProfile(event.target.value)}>
+          <option value="">None</option>
+          {generation.profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+        </select>
+      </label>
+      {comparison && <textarea aria-label="Comparison Python source" readOnly value={comparison}/>}
+      {runtime.status && <button disabled={!code} onClick={async () => {
+        const source = files[file] ?? code;
+        const pythonMinor = frameworkOptions?.pythonMinor ?? 13;
+        try {
+          const targeted = !!runtime.status?.pythonSyntaxTargets?.includes(pythonMinor);
+          await runtime.sourceOperation('source-analyze', targeted ? {source, pythonMinor} : {source});
+          setArtifactCheck({source, pythonMinor, message: targeted ? 'The companion accepted Python 3.' + pythonMinor + ' syntax.' :
+            'The companion parsed the preview with its default grammar. Upgrade the companion for target-specific checks.'});
+        } catch (cause) {
+          setArtifactCheck({source, pythonMinor, message: cause instanceof Error ? cause.message : String(cause)});
+        }
+      }}>Check preview syntax</button>}
+      {artifactCheck?.source === (files[file] ?? code) && artifactCheck.pythonMinor === frameworkOptions?.pythonMinor &&
+        <p role="status">{artifactCheck.message}</p>}
       <div className="actions">
         <button disabled={!code} onClick={() => save(model.className.trim() + '.py', code)}>Export Python</button>
+        {files[file] !== undefined && <button onClick={() => save(file.split('/').at(-1)!, files[file])}>Export preview file</button>}
         <button disabled={!code} onClick={() => navigator.clipboard.writeText(files[file] ?? code)
           .catch(cause => setError(String(cause)))}>Copy Python</button>
         <button onClick={() => {
           try {save('page-model.json', serializePage(model), 'application/json');}
           catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
         }}>Export JSON</button>
-        {!!model.components?.length && <button disabled={!code} onClick={() => {
+        <button disabled={!code} onClick={() => {
           try {
-            download('generated-python.zip', pythonPackageZip(generatePackage(model, runtime.policy)));
+            download('generated-python.zip', pythonPackageZip(generatePackage(model, runtime.policy, generation.profile)));
           } catch (cause) {
             setError(cause instanceof Error ? cause.message : String(cause));
           }
-        }}>Export Python package</button>}
+        }}>Export Python package</button>
+        <button disabled={!code} onClick={() => {
+          try {save('integration.py', generateIntegrationSnippet(model, runtime.policy, generation.profile));}
+          catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
+        }}>Export integration snippet</button>
+        <button disabled={!code} onClick={async () => {
+          try {
+            const artifacts = generatePackage(model, runtime.policy, generation.profile);
+            const manifest = generationManifest(model, runtime.policy, generation.profile, Object.keys(artifacts));
+            save('generation-manifest.json', JSON.stringify({...manifest, sha256: await artifactHashes(artifacts)}, null, 2),
+              'application/json');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        }}>Export generation manifest</button>
       </div>
     </>}
   </>;
