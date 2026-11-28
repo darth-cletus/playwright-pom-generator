@@ -27,7 +27,7 @@ POM-007 adds iframe and open shadow DOM support in the v0.7.0 extension and comp
 
 ## Verification
 
-The POM-006 baseline passed 42 TypeScript, 27 Chromium and 17 companion tests. POM-007 adds two TypeScript, five Chromium and one Python test. The browser suite builds and loads the production extension in a disposable Chromium profile. It uses two synthetic loopback hostnames for cross-origin tests and pregrants access to avoid automating native permission prompts.
+The POM-006 baseline passed 42 TypeScript, 27 Chromium and 17 companion tests. POM-007 passed 44 TypeScript, 32 Chromium and 18 companion tests, along with the production build, type checking and Ruff. The browser suite loads the production extension in a disposable Chromium profile. It uses two synthetic loopback hostnames for cross-origin tests and pregrants access to avoid automating native permission prompts. [Passing hosted workflow and screenshots](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46108161791)
 
 Automated cases exercise nested iframe entry from an open root, duplicate labels across scopes, a sandboxed frame, authorized cross-origin discovery and inspection, dynamically inserted and replaced frames, an unavailable persistent row, and generated Python in real Playwright. Companion coverage confirms a target in a shadow root, rejects a different frame with the same target label, and reports an ambiguous root. The unpacked-extension runtime test verifies an authorized cross-origin result and invalidation after a child DOM change.
 
@@ -69,7 +69,7 @@ Future work can use the portable path and revision-bound identity to reconcile m
 
 ## Git
 
-The implementation branch is `feature/POM-007-iframe-shadow-dom`, stacked on POM-006. Both packages are v0.7.0. The companion uses protocol v1 and advertises the additive `frame` capability. Scoped model exports use schema v3.
+The implementation branch is `feature/POM-007-iframe-shadow-dom`, stacked on POM-006. Both packages are v0.7.0. The companion uses protocol v1 and advertises the additive `frame` capability. Scoped model exports use schema v3. [Draft pull request #6](https://github.com/darth-cletus/playwright-pom-generator/pull/6)
 
 ## Acceptance criteria
 
@@ -223,5 +223,5 @@ PASS records automated evidence or directly reviewed behavior. FAIL records a kn
 | AC-007.144 | Existing POM-002 through POM-006 functionality remains operational. | PASS | Full existing unit, Chromium and companion suites. |
 | AC-007.145 | DEF-001 regression tests continue to pass. | PASS | Existing production side-panel startup regression. |
 | AC-007.146 | The production browser extension builds successfully. | PASS | TypeScript and production browser build. |
-| AC-007.147 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted verification pending. |
+| AC-007.147 | GitHub Actions workflows remain functional. | PASS | [Hosted suite passed on implementation commit ba250c3](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46108161791). |
 | AC-007.148 | Documentation accurately reflects implementation capabilities and limitations. | PASS | ADR, report, README and roadmap. |
