@@ -15,9 +15,9 @@ The v0.9.0 extension and companion add configurable Python generation. Default s
 | .01–.09 | Shared lowering and rendering, profile schema 1, deterministic precedence, local management and six built-ins implemented. An independent full AST intermediate representation remains open. |
 | .10–.20 | Sync and async Python, naming, base classes, constructor injection, three locator declaration modes and simple CSS constants implemented. |
 | .21–.29 | Interaction switches, explicit method sequences, defaults, native assertions, navigation and component/context locators implemented. |
-| .30–.35 | Annotation switches, docstrings, injected logger, timeouts and configurable package layout implemented. Per-target Python version validation and formatter integrations remain open. |
+| .30–.35 | Annotation switches, docstrings, injected logger, timeouts and configurable package layout implemented. Optional syntax checks support Python 3.10 through 3.13. |
 | .36–.40 | Inspectable built-in policies and bounded comment templates implemented. Full-program templates and formatting tool integration remain open. |
-| .41–.43 | Source analysis proposes import mode and line endings and reports assumptions. Existing POM-008 modifications retain their independent review workflow. |
+| .41–.43 | Static source evidence proposes import mode and line endings, checks direct base signatures, and flags unresolved dependencies. Existing POM-008 locator replacements retain their independent review workflow. |
 | .44–.51 | Profile editor, preview, artifact exports, optional syntax parsing, deterministic ZIP and manifest hashes implemented. |
 | .52–.56 | Validation, local-only operation, performance bounds, regression coverage and persistent documentation implemented. Stress cancellation and installed-browser acceptance remain open. |
 
@@ -57,7 +57,7 @@ A header template such as `{{class}} generated with {{profile}}` becomes a Pytho
 
 ## Verification and determinism
 
-Baseline POM-008 passed 46 TypeScript, 32 Chromium and 22 Python tests. POM-009 adds seven TypeScript tests and two Chromium tests and extends the paired source-review test to review profile inference. Trusted Python fixtures execute synchronous and asynchronous interaction methods, assertions, component factories and constructor forwarding. Unit tests compare repeated ZIP bytes and SHA-256 hashes. The unpacked extension test verifies profile persistence and exports a manifest.
+Baseline POM-008 passed 46 TypeScript, 32 Chromium and 22 Python tests. POM-009 adds eight TypeScript, two Chromium and one Python test and extends the paired source-review test to check targeted syntax and review profile inference. Trusted Python fixtures execute synchronous and asynchronous interaction methods, assertions, component factories and constructor forwarding. Unit tests compare repeated ZIP bytes and SHA-256 hashes. The unpacked extension test verifies profile persistence and exports a manifest.
 
 ## Performance and security
 
@@ -72,7 +72,7 @@ Profiles are validated as data. Identifiers, import modules and archive paths ar
 3. Configure your trusted framework's bases and dependency contracts. Export a package and manifest, verify imports in a disposable environment, and inspect generated logger calls.
 4. If the companion is paired, import existing Python and review the inferred profile. Check a generated preview's syntax independently of runtime verification.
 
-The profile editor supports declarative header templates and built-in formatting. It has no formatter command runner or full-program templates. Framework inference covers direct Playwright imports and line endings, with manual base class and dependency configuration. There is no automatic source rewrite workflow. Page overrides are supplied in JSON. Project-level stores, component-level overrides and version-targeted Python compatibility checks remain open.
+The profile editor supports declarative header templates and built-in formatting. It has no formatter command runner or full-program templates. Framework inference covers direct Playwright imports and line endings, with manual base class and dependency configuration. Compatibility checks use selected source basenames and directly declared signatures. Installed import resolution, decorators, metaclasses and inherited constructors require manual review. A relative navigation path requires a Playwright context with `base_url`. Page overrides are supplied in JSON. Project-level stores, component-level overrides and targeted source insertion remain open.
 
 ## Git
 
@@ -139,7 +139,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.53 | Dependency type imports are generated. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.54 | Dependencies can be forwarded to base classes. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.55 | Dependencies can be forwarded to components. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
-| AC-009.56 | Missing dependencies produce diagnostics. | FAIL | Declared dependencies are validated. Availability of external imports cannot be determined by the static preview. |
+| AC-009.56 | Missing dependencies produce diagnostics. | PASS | Framework compatibility review reports unresolved types in selected source without importing them. |
 | AC-009.57 | Constructor conflicts are detected. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.58 | Trusted custom framework constructor integration is verified. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.59 | Public locator attributes are supported. | PASS | Three declaration policies, simple CSS constants and shared scoped locator strategies. Existing frame and shadow tests pass. |
@@ -186,7 +186,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.100 | Context-aware generated code executes successfully. | PASS | Three declaration policies, simple CSS constants and shared scoped locator strategies. Existing frame and shadow tests pass. |
 | AC-009.101 | Type annotation policies are configurable. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.102 | Required typing imports are generated. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
-| AC-009.103 | Configured Python version compatibility is considered. | FAIL | Python version targeting remains a manual framework contract. |
+| AC-009.103 | Configured Python version compatibility is considered. | PASS | Profiles declare a Python 3.10 through 3.13 syntax target and the companion checks it when supported. |
 | AC-009.104 | Documentation generation is configurable. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.105 | Class docstrings can be generated. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
 | AC-009.106 | Method docstrings can be generated. | PASS | Annotation and docstring options render known contracts without inferring business behavior. |
@@ -227,7 +227,7 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.141 | Proposed profiles include supporting evidence. | PASS | Static direct Playwright import and line-ending observations include evidence and require review in Chromium. |
 | AC-009.142 | Inferred profiles require user review. | PASS | Static direct Playwright import and line-ending observations include evidence and require review in Chromium. |
 | AC-009.143 | Unresolved framework assumptions are reported. | PASS | Static direct Playwright import and line-ending observations include evidence and require review in Chromium. |
-| AC-009.144 | Framework compatibility checks are available. | FAIL | The profile validates structure and shows unresolved assumptions. It does not inspect external framework signatures or installed imports. |
+| AC-009.144 | Framework compatibility checks are available. | PASS | Static checks compare supported directly declared signatures with configured argument forwarding. Installed dependencies remain a separate contract. |
 | AC-009.145 | New page objects can integrate with trusted existing frameworks. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.146 | New components can integrate with trusted existing frameworks. | PASS | Trusted framework fixture verifies base constructors, injected logger, dependency forwarding and generated component package. |
 | AC-009.147 | Integration snippets can be generated. | PASS | The generated package factory snippet imports and constructs the trusted fixture. |

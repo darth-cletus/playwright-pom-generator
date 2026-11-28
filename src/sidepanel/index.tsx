@@ -13,6 +13,7 @@ import {contextLabel, type ContextBoundary} from '../core/context';
 import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
 import {Review} from './review';
 import {GenerationControls, useGeneration} from './generation';
+import {resolveGeneration, type GenerationOptions} from '../core/generation-profile';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect' | 'live';
@@ -30,7 +31,7 @@ function App() {
   const [file, setFile] = useState('');
   const generation = useGeneration();
   const [compareProfile, setCompareProfile] = useState('');
-  const [artifactCheck, setArtifactCheck] = useState<{source: string; message: string}>();
+  const [artifactCheck, setArtifactCheck] = useState<{source: string; pythonMinor: number; message: string}>();
   const [embedded, setEmbedded] = useState<FrameScan[]>([]);
   const [embeddedMessage, setEmbeddedMessage] = useState('');
   const [contextFilter, setContextFilter] = useState('');
@@ -147,6 +148,8 @@ function App() {
   let generationError = '';
   let files: Record<string, string> = {};
   let comparison = '';
+  let frameworkOptions: GenerationOptions | undefined;
+  try {frameworkOptions = resolveGeneration(generation.profile.options, model?.generation ?? {});} catch {}
   if (model) {
     try {
       code = generate(model, runtime.policy, generation.profile);
@@ -346,6 +349,7 @@ function App() {
     <GenerationControls generation={generation} download={save} model={model}/>
     <Review model={model} setModel={setModel} operation={runtime.sourceOperation} download={save}
       onProfileSuggestion={generation.setSuggestion}
+      frameworkOptions={frameworkOptions}
       runtimeCheck={runtime.status?.connected ? runtime.validateImported : undefined} observationEpoch={runtime.observationEpoch}
       observe={async locators => {
       if (tab === null || !model?.documentKey) throw Error('Scan the target page first.');
@@ -493,14 +497,18 @@ function App() {
       {comparison && <textarea aria-label="Comparison Python source" readOnly value={comparison}/>}
       {runtime.status && <button disabled={!code} onClick={async () => {
         const source = files[file] ?? code;
+        const pythonMinor = frameworkOptions?.pythonMinor ?? 13;
         try {
-          await runtime.sourceOperation('source-analyze', {source});
-          setArtifactCheck({source, message: 'The companion parsed this Python file successfully.'});
+          const targeted = !!runtime.status?.pythonSyntaxTargets?.includes(pythonMinor);
+          await runtime.sourceOperation('source-analyze', targeted ? {source, pythonMinor} : {source});
+          setArtifactCheck({source, pythonMinor, message: targeted ? 'The companion accepted Python 3.' + pythonMinor + ' syntax.' :
+            'The companion parsed the preview with its default grammar. Upgrade the companion for target-specific checks.'});
         } catch (cause) {
-          setArtifactCheck({source, message: cause instanceof Error ? cause.message : String(cause)});
+          setArtifactCheck({source, pythonMinor, message: cause instanceof Error ? cause.message : String(cause)});
         }
       }}>Check preview syntax</button>}
-      {artifactCheck?.source === (files[file] ?? code) && <p role="status">{artifactCheck.message}</p>}
+      {artifactCheck?.source === (files[file] ?? code) && artifactCheck.pythonMinor === frameworkOptions?.pythonMinor &&
+        <p role="status">{artifactCheck.message}</p>}
       <div className="actions">
         <button disabled={!code} onClick={() => save(model.className.trim() + '.py', code)}>Export Python</button>
         {files[file] !== undefined && <button onClick={() => save(file.split('/').at(-1)!, files[file])}>Export preview file</button>}

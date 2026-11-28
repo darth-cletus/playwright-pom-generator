@@ -12,6 +12,7 @@ export interface GenerationMethod {name: string; steps: GenerationStep[]}
 
 export interface GenerationOptions {
   execution: 'sync' | 'async';
+  pythonMinor: 10 | 11 | 12 | 13;
   annotations: 'legacy' | 'typed' | 'none';
   declaration: 'constructor' | 'property' | 'method';
   selectorConstants: boolean;
@@ -53,7 +54,8 @@ export interface GenerationProfile {
 }
 
 export const defaultGeneration: GenerationOptions = {
-  execution: 'sync', annotations: 'legacy', declaration: 'constructor', selectorConstants: false, interactions: true, documentation: false,
+  execution: 'sync', pythonMinor: 13, annotations: 'legacy', declaration: 'constructor', selectorConstants: false,
+  interactions: true, documentation: false,
   assertions: false, memberPrefix: '', methodPrefix: '', methodOrder: 'action-first', baseModule: '', baseClass: '',
   superPage: false, componentBaseModule: '', componentBaseClass: '', superRoot: false, forwardBaseDependencies: false,
   dependencies: [], logger: '', methods: [],
@@ -94,7 +96,7 @@ export function resolveGeneration(...layers: Partial<GenerationOptions>[]): Gene
   }
   const modes = {execution: ['sync', 'async'], annotations: ['legacy', 'typed', 'none'],
     declaration: ['constructor', 'property', 'method'], methodOrder: ['action-first', 'member-first'],
-    lineEnding: ['lf', 'crlf'], indent: [2, 4], packageImports: ['relative', 'absolute']} as const;
+    lineEnding: ['lf', 'crlf'], indent: [2, 4], packageImports: ['relative', 'absolute'], pythonMinor: [10, 11, 12, 13]} as const;
   for (const [key, allowed] of Object.entries(modes)) {
     if (!(allowed as readonly unknown[]).includes(options[key as keyof GenerationOptions])) throw Error('Invalid generation option ' + key + '.');
   }

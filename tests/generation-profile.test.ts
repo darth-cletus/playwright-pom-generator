@@ -3,6 +3,7 @@ import {generationProfiles, readGenerationProfile, resolveGeneration} from '../s
 import {artifactHashes, generate, generateIntegrationSnippet, generatePackage, generationManifest} from '../src/core/python';
 import {pythonPackageZip} from '../src/core/python-package';
 import type {PageModel} from '../src/core/model';
+import {frameworkCompatibility, readAnalysis} from '../src/core/review';
 
 const model: PageModel = {className: 'Checkout', url: 'https://example.test/', elements: [
   {id: 'field', name: 'email', label: 'Email', tag: 'input', action: 'fill', selected: true, choice: null,
@@ -84,4 +85,17 @@ it('measures generation with 1,000 selected fields', () => {
   const bytes = new TextEncoder().encode(Object.values(files).join('')).length;
   console.info(`Generation workload 1000 fields: ${(performance.now() - start).toFixed(1)} ms, ${bytes} bytes`);
   expect(files['generated/pages/checkout.py']).toContain('def field_999');
+});
+
+it('distinguishes static constructor compatibility from unresolved dependencies', () => {
+  const analysis = readAnalysis({revision: 'a'.repeat(64), entries: [], diagnostics: [], classes: [
+    {name: 'BasePage', line: 1, bases: [], constructor: {positionals: ['page'], positionalOnly: 0, requiredPositionals: 1,
+      keywords: ['logger'], requiredKeywords: ['logger'], acceptsArgs: false, acceptsKeywords: false}},
+  ]});
+  const files = [{name: 'base.py', analysis}];
+  const options = generationProfiles[5].options;
+  const missingLogger = frameworkCompatibility(options, files);
+  expect(missingLogger[0].message).toContain('Incompatible');
+  expect(missingLogger.at(-1)?.message).toContain('Unresolved dependency');
+  expect(frameworkCompatibility({...options, forwardBaseDependencies: true}, files)[0].message).toContain('signature accepts');
 });

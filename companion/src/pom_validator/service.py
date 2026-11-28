@@ -52,6 +52,7 @@ class Service:
             "pythonVersion": platform.python_version(),
             "strategies": STRATEGIES,
             "sourceAnalysis": 1,
+            "pythonSyntaxTargets": (10, 11, 12, 13),
             "connected": connection.connected,
             "browserId": connection.identity if connection.connected else None,
             "browserVersion": connection.browser.version

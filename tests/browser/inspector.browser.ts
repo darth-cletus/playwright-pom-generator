@@ -845,6 +845,8 @@ it('pairs the actual extension with Python and validates selected locator eviden
     await app.goto(fixtureUrl + '/login');
     await clickPanel('Scan active page');
     await expect.poll(() => panel.getByRole('checkbox', {name: 'Email', exact: true}).count()).toBe(1);
+    await clickPanel('Check preview syntax');
+    await expect.poll(() => panel.getByText('The companion accepted Python 3.13 syntax.').count()).toBe(1);
     await panel.getByText('Manage existing page objects', {exact: true}).click();
     const source = Buffer.from(
       "from playwright.sync_api import Page\n\nclass Login:\n    def __init__(self, page):\n        self.email_input = page.locator('#old-email')  # preserve\n",

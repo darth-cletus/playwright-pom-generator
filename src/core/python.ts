@@ -404,6 +404,7 @@ export function generationManifest(model: PageModel, policy: RuntimePolicy, prof
   const options = resolveGeneration(profile.options, model.generation ?? {});
   return {schemaVersion: 1, profile: {id: profile.id, revision: profile.revision},
     className: model.className.trim(), execution: options.execution, policy, files: [...paths].sort(),
+    python: '3.' + options.pythonMinor,
     selectedElements: model.elements.filter(element => element.selected).length, components: model.components?.length ?? 0,
     framework: options.baseModule ? {module: options.baseModule, className: options.baseClass} : undefined};
 }

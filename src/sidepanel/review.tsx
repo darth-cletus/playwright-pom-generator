@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import type {PageModel} from '../core/model';
-import {assess, readAnalysis, readPageModel, type SourceAnalysis} from '../core/review';
+import {assess, frameworkCompatibility, readAnalysis, readPageModel, type SourceAnalysis} from '../core/review';
 import {pythonLocator} from '../core/python';
 import {serializePage} from '../core/model';
 import {selectedCandidate} from '../core/locator';
@@ -11,7 +11,7 @@ import type {GenerationOptions} from '../core/generation-profile';
 interface SourceFile {name: string; source: string; analysis: SourceAnalysis}
 interface Preview {source: string; patch: string; file: SourceFile; observation: PageModel | null}
 
-export function Review({model, setModel, operation, download, observe, runtimeCheck, observationEpoch, onProfileSuggestion}: {
+export function Review({model, setModel, operation, download, observe, runtimeCheck, observationEpoch, onProfileSuggestion, frameworkOptions}: {
   model: PageModel | null;
   setModel: (model: PageModel) => void;
   operation: (kind: 'source-analyze' | 'source-transform', payload: object) => Promise<Record<string, unknown>>;
@@ -20,6 +20,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
   runtimeCheck?: (locators: Locator[]) => Promise<RuntimeResult[]>;
   observationEpoch: number;
   onProfileSuggestion: (proposal: {name: string; options: Partial<GenerationOptions>; evidence: string}) => void;
+  frameworkOptions?: GenerationOptions;
 }) {
   const [files, setFiles] = useState<SourceFile[]>([]);
   const [index, setIndex] = useState(0);
@@ -31,6 +32,7 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
   const [saved, setSaved] = useState<PageModel>();
   const [counts, setCounts] = useState<(number | null)[]>();
   const [runtimeResults, setRuntimeResults] = useState<RuntimeResult[]>();
+  const [checkingFramework, setCheckingFramework] = useState(false);
   const file = files[index];
   const latest = useRef(model);
   latest.current = model;
@@ -178,6 +180,12 @@ export function Review({model, setModel, operation, download, observe, runtimeCh
         </select>
       </label>
       <p>{file.analysis.classes.length} classes · {file.analysis.entries.length} supported locator assignments</p>
+      {frameworkOptions && (frameworkOptions.baseClass || frameworkOptions.componentBaseClass || !!frameworkOptions.dependencies.length) &&
+        <button onClick={() => setCheckingFramework(value => !value)}>
+          {checkingFramework ? 'Hide framework compatibility' : 'Check framework compatibility'}
+        </button>}
+      {checkingFramework && frameworkOptions && <ul>{frameworkCompatibility(frameworkOptions, files).map(item =>
+        <li key={item.name}>{item.name} · {item.message}</li>)}</ul>}
       {!!file.analysis.generationConventions?.playwrightImports.length && <button onClick={() => {
         const conventions = file.analysis.generationConventions!;
         const modes = new Set(conventions.playwrightImports.map(item => item.execution));

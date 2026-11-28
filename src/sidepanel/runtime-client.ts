@@ -31,7 +31,9 @@ export function readStatus(data: Record<string, unknown>): CompanionStatus {
     typeof serviceVersion !== 'string' || typeof pythonVersion !== 'string' || typeof playwrightVersion !== 'string' ||
     (browserVersion !== null && typeof browserVersion !== 'string')) throw Error('Invalid companion status response.');
   const strategies = Array.isArray(data.strategies) ? data.strategies.filter((value): value is string => typeof value === 'string') : undefined;
-  return {connected, browserId, serviceVersion, pythonVersion, playwrightVersion, browserVersion, strategies};
+  const pythonSyntaxTargets = Array.isArray(data.pythonSyntaxTargets) ? data.pythonSyntaxTargets.filter((value): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value)) : undefined;
+  return {connected, browserId, serviceVersion, pythonVersion, playwrightVersion, browserVersion, strategies, pythonSyntaxTargets};
 }
 
 export function readResults(data: Record<string, unknown>, expected: {requestId: string; browserId: string;

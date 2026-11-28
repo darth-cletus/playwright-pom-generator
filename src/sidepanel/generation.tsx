@@ -183,6 +183,10 @@ export function GenerationControls({generation, download, model}: {
       <label>Indentation <select value={draft.options.indent} onChange={event => update('indent', event.target.value === '2' ? 2 : 4)}>
         <option value={2}>Two spaces</option><option value={4}>Four spaces</option>
       </select></label>
+      <label>Python syntax target <select value={draft.options.pythonMinor}
+        onChange={event => update('pythonMinor', Number(event.target.value) as GenerationOptions['pythonMinor'])}>
+        {[10, 11, 12, 13].map(version => <option value={version} key={version}>{'3.' + version}</option>)}
+      </select></label>
       <label>Timeout in milliseconds <input type="number" min={0} max={120000} value={draft.options.timeoutMs}
         onChange={event => update('timeoutMs', Number(event.target.value))}/></label>
       <label>Header comment template <textarea maxLength={2000} value={draft.options.header} onChange={event => update('header', event.target.value)}/></label>
