@@ -90,3 +90,7 @@ A browsing context is an ordered path of shadow hosts and iframe owners. The con
 ## Configurable Python generation
 
 Generation resolves a profile and page overrides without browser dependencies. The same renderer lowers validated elements, component definitions and explicitly configured methods into a single file or a package. [Generation profiles decision](decisions/0006-generation-profiles.md)
+
+## Interaction recording
+
+A document-scoped port controls passive recording. A transport-safe workflow keeps ordered structural targets and explicit parameters. The panel owns review and lowers approved actions through the existing Python generation profiles. [Recording design](decisions/0007-workflow-recording.md)

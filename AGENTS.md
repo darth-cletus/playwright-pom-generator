@@ -31,5 +31,6 @@ Playwright Page Object Generator is a local Chromium Manifest V3 extension. It s
 - Extend [browsing context paths](docs/decisions/0004-scoped-browsing-contexts.md) through the structured locator contract. Keep authorized frame injection document-scoped and keep live document references out of scoped exports.
 - Keep Python import static. Bind source transformations to exact revisions and preserve bytes outside approved expression spans. [Source review decision](docs/decisions/0005-static-source-review.md)
 - Use the same typed generation pipeline for preview, single files and packages. Keep profile and template data declarative. [Generation profiles decision](docs/decisions/0006-generation-profiles.md)
+- Keep recorder capture value-blind. Validate targets before the recording port sends them and lower reviewed workflows through the shared Python renderer. [Recording design](docs/decisions/0007-workflow-recording.md)
 
 See [architecture](docs/architecture.md) for model and validation details and [current state](docs/current-state.md) for the verification snapshot.

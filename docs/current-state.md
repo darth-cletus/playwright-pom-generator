@@ -1,5 +1,7 @@
 # Current state
 
+POM-010 targets extension v0.10.0. The extension can record, edit, save and export workflows and generate Python methods from reviewed actions. [POM-010 verification](pom-010-verification.md)
+
 POM-009 targets v0.9.0 for the extension and companion. It adds generation profiles, async Python, configurable framework integration and artifact provenance. [POM-009 verification](pom-009-verification.md)
 
 POM-008 targets v0.8.0. The side panel can open JSON models, review supported Python assignments, check imported locators and prepare revision-bound source diffs. [POM-008 verification](pom-008-verification.md)
