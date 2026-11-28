@@ -9,7 +9,7 @@
 | POM-006 | Advanced SPA lifecycle management. |
 | POM-007 | Iframe and open shadow DOM paths, targeted embedded permissions and scoped Python generation. Installed-browser acceptance remains open. |
 | POM-008 | Static import, reviewed locator changes and revision-bound Python diffs. Project-wide and dependency-aware reconciliation remain open. |
-| POM-009 | Configurable generator templates. |
+| POM-009 | Portable generation profiles, sync and async Python, framework constructors, package layouts, and declarative templates. |
 | POM-010 | Interaction recording. |
 | POM-011 | Pytest test generation. |
 | POM-012 | Automated release packaging. |

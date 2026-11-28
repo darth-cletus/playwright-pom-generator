@@ -1,6 +1,6 @@
 # Playwright Page Object Generator
 
-Generate synchronous Python Playwright page objects from the active tab in Chrome or Edge. Page scanning and code generation run locally.
+Generate synchronous or asynchronous Python Playwright page objects from the active tab in Chrome or Edge. Page scanning and code generation run locally.
 
 ## Build and install (Windows PowerShell or other shell)
 
@@ -94,3 +94,8 @@ Python exports use native lazy locators, including `.content_frame` for iframe t
 ## Manage existing page objects
 
 Open **Manage existing page objects** to load a Page Object Generator JSON model or up to ten Python files. JSON import works without the companion. Pair with companion v0.8.0 to analyze Python. Scan the intended tab, check imported locators, then approve any proposed replacements. Choose the current Python file again to verify its revision and preview a unified diff. Download the reviewed Python or patch and keep the original available for recovery. [POM-008 verification](docs/pom-008-verification.md)
+## Configurable Python generation
+
+Open **Generation profile** to choose synchronous or asynchronous Python. Duplicate a built-in profile to configure locator declarations, naming, assertions, dependencies, base classes, package layout, and formatting. Custom profiles stay in extension storage and can be imported or exported as JSON.
+
+Use **Configured methods JSON** to describe explicit actions on selected element IDs. The generator can emit a Python file or package and a manifest with SHA-256 hashes. Syntax checks use the optional local companion. See the [generation verification report](docs/pom-009-verification.md) for examples and limits.
