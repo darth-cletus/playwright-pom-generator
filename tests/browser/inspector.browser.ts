@@ -41,9 +41,10 @@ beforeAll(async () => {
   const dynamic = await readFile(new URL('../../fixtures/dynamic.html', import.meta.url));
   const scoped = await readFile(new URL('../../fixtures/contexts.html', import.meta.url));
   const nested = await readFile(new URL('../../fixtures/context-frame.html', import.meta.url));
+  const workflow = await readFile(new URL('../../fixtures/workflow.html', import.meta.url));
   server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
-    response.end(request.url === '/login' ? login : request.url?.startsWith('/components') ? components :
+    response.end(request.url === '/workflow' ? workflow : request.url === '/login' ? login : request.url?.startsWith('/components') ? components :
       request.url?.startsWith('/dynamic') ? dynamic :
       request.url?.startsWith('/contexts') ? scoped :
       request.url?.startsWith('/context-') ? nested : fixture);
@@ -276,6 +277,199 @@ async function download(name: string) {
   if (!file) throw Error('No exported file');
   return readFile(file, 'utf8');
 }
+
+it('records trusted actions without reading values, and generates a reviewed workflow', async () => {
+  await app.goto(fixtureUrl + '/workflow');
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Start recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await app.getByLabel('Email').pressSequentially('private@example.test');
+  await app.getByLabel('Password').fill('private-fixture-password');
+  await app.getByLabel('Remember').check();
+  await app.getByRole('button', {name: 'Submit'}).dispatchEvent('click', {button: 0});
+  await clickPanel('Pause recording');
+  await expect.poll(() => panel.getByText('Workflow paused', {exact: true}).count()).toBe(1);
+  await app.getByRole('button', {name: 'Submit'}).click();
+  await clickPanel('Resume recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await app.getByRole('button', {name: 'Submit'}).click();
+  await clickPanel('Assert last target is visible');
+  await clickPanel('Stop recording');
+  await expect.poll(() => panel.getByText('Workflow stopped', {exact: true}).count()).toBe(1);
+  expect(await app.locator('output').textContent()).toBe('3');
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(0);
+  await app.getByRole('button', {name: 'Submit'}).click();
+  expect(await app.locator('output').textContent()).toBe('4');
+  const json = await download('Export workflow JSON');
+  expect(json).not.toContain('private-');
+  expect(json).not.toContain('private@example.test');
+  expect(JSON.parse(json).steps.map((step: {action: string}) => step.action)).toEqual(['fill', 'fill', 'check', 'click', 'assert']);
+  for (let index = 1; index <= 5; index++) {
+    await panel.getByRole('checkbox', {name: `Approve recorded target for step ${index}`}).check();
+  }
+  await panel.getByRole('textbox', {name: 'Parameter for step 2'}).fill('password');
+  await clickPanel('Preview workflow Python');
+  const source = await panel.getByRole('textbox', {name: 'Workflow Python preview'}).inputValue();
+  expect(source).toContain('def recorded_flow(self, *, value_1: str, password: str)');
+  expect(source).toContain('self.step_2.fill(password)');
+  expect(source).not.toContain('private-fixture-password');
+  await panel.getByText('Generation profile', {exact: true}).click();
+  await panel.getByLabel('Active generation profile').selectOption('typed-async');
+  await clickPanel('Preview workflow Python');
+  const asyncSource = await panel.getByRole('textbox', {name: 'Workflow Python preview'}).inputValue();
+  expect(asyncSource).toContain('async def recorded_flow');
+  expect(asyncSource).toContain('await self.step_2.fill(password)');
+  const execution = spawnSync(python, ['-c', [
+    'import asyncio, json, sys',
+    'from playwright.async_api import async_playwright',
+    'from playwright.sync_api import sync_playwright',
+    'data = json.load(sys.stdin)',
+    'sync_namespace = {}',
+    'exec(compile(data["sync"], "<sync workflow>", "exec"), sync_namespace)',
+    'with sync_playwright() as playwright:',
+    '    browser = playwright.chromium.launch()',
+    '    page = browser.new_page()',
+    '    page.set_content(data["html"])',
+    '    sync_namespace["RecordedWorkflow"](page).recorded_flow(value_1="example@example.test", password="fixture-only")',
+    '    assert page.locator("output").text_content() == "1"',
+    '    browser.close()',
+    'namespace = {}',
+    'exec(compile(data["source"], "<workflow>", "exec"), namespace)',
+    'async def main():',
+    '    async with async_playwright() as playwright:',
+    '        browser = await playwright.chromium.launch()',
+    '        page = await browser.new_page()',
+    '        await page.set_content(data["html"])',
+    '        flow = namespace["RecordedWorkflow"](page)',
+    '        await flow.recorded_flow(value_1="example@example.test", password="fixture-only")',
+    '        assert await page.locator("output").text_content() == "1"',
+    '        assert await page.get_by_label("Remember").is_checked()',
+    '        await browser.close()',
+    'asyncio.run(main())',
+  ].join('\n')], {input: JSON.stringify({source: asyncSource, sync: source,
+    html: await readFile(new URL('../../fixtures/workflow.html', import.meta.url), 'utf8')}), encoding: 'utf8', timeout: 12_000});
+  expect(execution.status, execution.error?.message ?? execution.stderr).toBe(0);
+  await clickPanel('Scan active page');
+  await expect.poll(() => panel.getByRole('textbox', {name: 'Python source preview'}).inputValue()).toContain('class GeneratedPage');
+  await clickPanel('Add workflow method to scanned page');
+  await expect.poll(() => panel.getByRole('textbox', {name: 'Python source preview'}).inputValue()).toContain('async def recorded_flow');
+  if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+    const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+    await mkdir(output, {recursive: true});
+    await panel.screenshot({path: join(output, 'workflow-preview.png')});
+  }
+}, 30_000);
+
+it('records frame and shadow paths and retains same-document navigation as a scrubbed marker', async () => {
+  await app.goto(fixtureUrl + '/contexts');
+  const button = app.frameLocator('#billing').frameLocator('#nested').getByRole('button', {name: 'Confirm'});
+  await button.waitFor();
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Start recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await button.click();
+  await app.evaluate(() => history.pushState({}, '', '?private=unexportable-sentinel'));
+  await expect.poll(() => panel.getByText('2 steps', {exact: true}).count()).toBe(1);
+  await clickPanel('Stop recording');
+  await expect.poll(() => panel.getByText('Workflow stopped', {exact: true}).count()).toBe(1);
+  const json = await download('Export workflow JSON');
+  expect(json).not.toContain('unexportable-sentinel');
+  expect(json.match(/"strategy": "frame"/g)).toHaveLength(2);
+  expect(JSON.parse(json).steps[1]).toEqual({action: 'navigation'});
+  await clickPanel('Save workflow draft');
+  await expect.poll(() => panel.getByText(/Workflow draft saved locally/).count()).toBe(1);
+  await panel.reload();
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Recover workflow draft');
+  await expect.poll(() => panel.getByText('2 steps', {exact: true}).count()).toBe(1);
+  await clickPanel('Clear workflow and draft');
+  await expect.poll(() => panel.getByText('0 steps', {exact: true}).count()).toBe(1);
+}, 20_000);
+
+it('normalizes double clicks and keeps file and selection metadata out of workflow exports', async () => {
+  await app.goto(fixtureUrl + '/workflow');
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Start recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await app.getByRole('button', {name: 'Submit'}).dblclick();
+  await app.getByLabel('Plan').focus();
+  await app.getByLabel('Plan').press('ArrowDown');
+  const choosing = app.waitForEvent('filechooser');
+  await app.getByLabel('Attachment').click();
+  await (await choosing).setFiles({
+    name: 'private-file.txt', mimeType: 'text/plain', buffer: Buffer.from('private-file-body'),
+  });
+  const downloaded = app.waitForEvent('download');
+  await app.getByRole('link', {name: 'Download'}).click();
+  await downloaded;
+  await clickPanel('Stop recording');
+  await expect.poll(() => panel.getByText('Workflow stopped', {exact: true}).count()).toBe(1);
+  const saved = await download('Export workflow JSON');
+  expect(saved).not.toContain('private-');
+  expect(JSON.parse(saved).steps.map((step: {action: string}) => step.action)).toEqual(['dblclick', 'select', 'upload', 'download']);
+  await clickPanel('Remove step 4');
+  await clickPanel('Undo workflow edit');
+  await expect.poll(() => panel.getByText('4 steps', {exact: true}).count()).toBe(1);
+  await clickPanel('Redo workflow edit');
+  for (let index = 1; index <= 3; index++) {
+    await panel.getByRole('checkbox', {name: `Approve recorded target for step ${index}`}).check();
+  }
+  await clickPanel('Preview workflow Python');
+  const code = await panel.getByRole('textbox', {name: 'Workflow Python preview'}).inputValue();
+  expect(code).toContain('self.step_1.dblclick()');
+  expect(code).toContain('self.step_3.set_input_files(value_3)');
+}, 20_000);
+
+it('bounds a large trusted recording and releases its listeners', async () => {
+  await app.goto(fixtureUrl + '/workflow');
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Start recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  const target = await app.getByRole('button', {name: 'Submit'}).boundingBox();
+  if (!target) throw Error('Fixture button is unavailable.');
+  const x = target.x + target.width / 2;
+  const y = target.y + target.height / 2;
+  const connection = await context.newCDPSession(app);
+  const started = performance.now();
+  try {
+    for (let index = 0; index < 250; index++) {
+      await connection.send('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1});
+      await connection.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1});
+    }
+  } finally {
+    await connection.detach();
+  }
+  await expect.poll(() => panel.getByText(/Workflow stopped.*Recording limit reached/).count()).toBe(1);
+  expect(await panel.getByText('250 steps', {exact: true}).count()).toBe(1);
+  expect(await app.locator('[data-pom-overlay]').count()).toBe(0);
+  console.info(`250 trusted actions reached the bounded recorder in ${Math.round(performance.now() - started)} ms.`);
+}, 25_000);
+
+it('interrupts recording for a new document or tab and only continues in the original scope', async () => {
+  await app.goto(fixtureUrl + '/workflow');
+  await panel.getByText('Record workflow', {exact: true}).click();
+  await clickPanel('Start recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await app.getByRole('button', {name: 'Submit'}).click();
+  await app.goto(fixtureUrl + '/login');
+  await expect.poll(() => panel.getByText(/^Workflow interrupted/).count()).toBe(1);
+  await clickPanel('Continue original recording');
+  await expect.poll(() => panel.getByText('Workflow recording', {exact: true}).count()).toBe(1);
+  await app.getByLabel('Email').fill('other-private@example.test');
+  await expect.poll(() => panel.getByText('3 steps', {exact: true}).count()).toBe(1);
+  const unrelated = await context.newPage();
+  try {
+    await unrelated.goto(fixtureUrl + '/workflow');
+    await unrelated.bringToFront();
+    await expect.poll(() => panel.getByText(/^Workflow interrupted/).count()).toBe(1);
+    await clickPanel('Continue original recording');
+    await expect.poll(() => panel.getByText(/Continue in the original tab and origin/).count()).toBe(1);
+    await unrelated.getByRole('button', {name: 'Submit'}).click();
+    expect(await panel.getByText('3 steps', {exact: true}).count()).toBe(1);
+  } finally {
+    await unrelated.close();
+  }
+}, 20_000);
 
 it('persists a custom generation profile and exports deterministic artifact metadata', async () => {
   await app.goto(fixtureUrl + '/login');

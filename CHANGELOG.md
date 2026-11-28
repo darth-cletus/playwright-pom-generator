@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.0 (unreleased)
+
+- Added consent-based workflow recording, target review, draft recovery, and workflow JSON import and export.
+- Added optional workflow locator validation and reviewed lowering to synchronous or asynchronous Python using the active generation profile.
+- Kept form values, filenames, download content, and navigation addresses outside recorded steps.
+
 ## v0.9.0 (unreleased)
 
 - Added portable generation profiles, asynchronous Python, framework base classes and constructor dependencies.

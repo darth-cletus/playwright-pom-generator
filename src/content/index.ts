@@ -12,18 +12,26 @@ import {announceFrame, correlateFrame, frameNonce, frameOrigin} from './frame-br
 import {readContextPath} from '../core/context';
 import {locatorIsValid, type Locator} from '../core/locator';
 import {createDomMatcher} from './validation';
+import {Recorder} from './recorder';
+import {readRecordedStep, recordingPort, workflowLimit, type RecordingCommand} from '../core/workflow';
 
 function install() {
   const collection = new ElementCollection();
   const highlights = new Highlights();
   const lifecycle = new ApplicationLifecycle(collection.documentKey);
   const runtime = new RuntimeCorrelation(collection, lifecycle);
+  let recording: {port: chrome.runtime.Port; recorder: Recorder; dispose: () => void} | undefined;
   window.addEventListener('pagehide', event => {
+    recording?.recorder.finish();
+    recording?.dispose();
     runtime.close();
     if (!event.persisted) lifecycle.close();
   });
   let active: {port: chrome.runtime.Port; inspector: Inspector} | undefined;
-  lifecycle.onNavigation(() => active?.inspector.stop('The application navigated. Start inspection again.'));
+  lifecycle.onNavigation(() => {
+    active?.inspector.stop('The application navigated. Start inspection again.');
+    recording?.recorder.navigation();
+  });
   let live: {port: chrome.runtime.Port; discovery: LiveDiscovery} | undefined;
   function references(values: unknown): Element[] | undefined {
     if (!Array.isArray(values) || !values.length || values.length > 30 ||
@@ -51,6 +59,19 @@ function install() {
         const staleIds = Array.isArray(message.tracked) ? message.tracked.filter((id: unknown) =>
           typeof id === 'string' && id.startsWith(collection.documentKey + ':') && !collection.get(id)) : [];
         reply({...page, staleIds});
+      }
+    } else if (message?.type === 'POM_WORKFLOW_MATCH' && sender.id === chrome.runtime.id &&
+      message.documentKey === collection.documentKey && Array.isArray(message.steps) && message.steps.length <= workflowLimit) {
+      try {
+        const match = createDomMatcher(document);
+        reply(message.steps.map((step: unknown) => {
+          const {locator} = readRecordedStep(step);
+          if (!locator) return null;
+          const nodes = match(locator);
+          return nodes.length === 1 ? collection.id(nodes[0]) : null;
+        }));
+      } catch {
+        reply(null);
       }
     } else if (message?.type === 'POM_IMPORTED_CHECK' && sender.id === chrome.runtime.id &&
       message.documentKey === collection.documentKey && Array.isArray(message.locators) && message.locators.length <= 100 &&
@@ -102,6 +123,42 @@ function install() {
 
   chrome.runtime.onConnect.addListener(port => {
     if (port.sender?.id && port.sender.id !== chrome.runtime.id) return;
+    if (port.name === recordingPort) {
+      let session = '';
+      port.onMessage.addListener((command: RecordingCommand) => {
+        if (command?.version !== 1 || !frameNonce(command.session)) return;
+        if (command.type === 'start' && !session) {
+          recording?.recorder.stop();
+          recording?.dispose();
+          active?.inspector.stop('Inspection stopped while recording.');
+          session = command.session;
+          const recorder = new Recorder(event => {
+            try {port.postMessage({...event, version: 1, session});}
+            catch {recorder.stop();}
+          });
+          const unsubscribe = lifecycle.subscribe(batch => recorder.changed(!!batch.contextsChanged));
+          recording = {port, recorder, dispose: () => {
+            unsubscribe();
+            if (recording?.port === port) recording = undefined;
+          }};
+          recorder.resume();
+        } else if (recording?.port === port && session === command.session) {
+          const {recorder, dispose} = recording;
+          if (command.type === 'pause') recorder.pause();
+          if (command.type === 'resume') recorder.resume();
+          if (command.type === 'assert') recorder.assertion();
+          if (command.type === 'stop') {recorder.finish(); dispose();}
+        }
+      });
+      port.onDisconnect.addListener(() => {
+        if (recording?.port === port) {
+          const {recorder, dispose} = recording;
+          dispose();
+          recorder.stop();
+        }
+      });
+      return;
+    }
     if (port.name === lifecyclePort) {
       let session: string | undefined;
       port.onMessage.addListener((message: LiveCommand) => {
@@ -134,6 +191,7 @@ function install() {
       return;
     }
     if (port.name !== inspectorPort) return;
+    if (recording) {port.disconnect(); return;}
     if (active) {
       active.inspector.stop('Inspection moved to another panel.');
       active.port.disconnect();

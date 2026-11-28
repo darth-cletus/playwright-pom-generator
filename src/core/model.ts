@@ -4,7 +4,7 @@ import {modelSchemaVersion, validateComponentGraph, type ComponentDefinition} fr
 import type {BrowsingContext} from './context';
 import type {GenerationOptions} from './generation-profile';
 
-export type Action = 'click' | 'fill' | 'check' | 'select' | 'read' | 'assert';
+export type Action = 'click' | 'dblclick' | 'fill' | 'clear' | 'press' | 'check' | 'uncheck' | 'select' | 'upload' | 'read' | 'assert';
 export const contextSchemaVersion = 3;
 
 export function supportsSchema(version?: number): boolean {

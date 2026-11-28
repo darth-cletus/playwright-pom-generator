@@ -103,7 +103,7 @@ export function readPageModel(text: string): PageModel {
     readContextPath(context.path.map(step => record(step) && step.owner === undefined && context.state !== 'accessible'
       ? {...step, owner: {strategy: 'css', selector: '*'}} : step)) !== undefined;
   const isElement = (row: unknown) => record(row) && ['id', 'name', 'label', 'tag'].every(key => typeof row[key] === 'string') &&
-    ['click', 'fill', 'check', 'select', 'read', 'assert'].includes(String(row.action)) &&
+    ['click', 'dblclick', 'fill', 'clear', 'press', 'check', 'uncheck', 'select', 'upload', 'read', 'assert'].includes(String(row.action)) &&
     typeof row.selected === 'boolean' && (row.choice === null || typeof row.choice === 'string') &&
     (row.context === undefined || isContext(row.context)) &&
     Array.isArray(row.candidates) && row.candidates.length <= 100 && row.candidates.every(candidate =>

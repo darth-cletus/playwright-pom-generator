@@ -99,3 +99,9 @@ Open **Manage existing page objects** to load a Page Object Generator JSON model
 Open **Generation profile** to choose synchronous or asynchronous Python. Duplicate a built-in profile to configure locator declarations, naming, assertions, dependencies, base classes, package layout, and formatting. Custom profiles stay in extension storage and can be imported or exported as JSON.
 
 Use **Configured methods JSON** to describe explicit actions on selected element IDs. The generator can emit a Python file or package and a manifest with SHA-256 hashes. Syntax checks use the optional local companion. See the [generation verification report](docs/pom-009-verification.md) for examples and limits.
+
+## Record a workflow
+
+Open **Record workflow** on a regular web page and select **Start recording**. The recording banner appears in the active tab. Use **Pause recording** to exclude actions, **Stop recording** to review the timeline, and **Save workflow draft** to recover it later.
+
+Review selectors and name parameters before previewing Python. Recorded input and selection values are supplied by the caller at runtime. The recorder captures upload intent without collecting the filename or file contents. [Recording verification and supported actions](docs/pom-010-verification.md)
