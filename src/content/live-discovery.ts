@@ -5,6 +5,7 @@ import {discoverComponents} from './components';
 import {discoverable, ElementCollection, interactive, inspectable, visible} from './elements';
 import type {ApplicationLifecycle, MutationBatch} from './lifecycle';
 import {attributeSelector, createDomMatcher} from './validation';
+import {openTrees} from './contexts';
 
 const trackedLimit = 200;
 const componentScopes = 3;
@@ -59,6 +60,7 @@ export class LiveDiscovery {
 
   sync() {
     if (!this.paused) {
+      this.lifecycle.refreshContexts();
       this.pendingFull = true;
       this.flush();
     }
@@ -80,7 +82,7 @@ export class LiveDiscovery {
   private changed(batch: MutationBatch) {
     if (this.paused) return;
     this.records = Math.min(liveBudget.records, this.records + batch.records);
-    this.pendingFull ||= batch.navigation || batch.overflow;
+    this.pendingFull ||= batch.navigation || batch.overflow || !!batch.contextsChanged;
     for (const root of batch.roots) {
       if (this.roots.size >= liveBudget.roots) {this.pendingFull = true; break;}
       if (root.isConnected) this.roots.add(root);
@@ -120,10 +122,11 @@ export class LiveDiscovery {
 
     const build = this.collection.builder(this.settings);
     const targets = new Set<Element>();
+    const snapshot = full ? this.collection.scan(this.settings, liveBudget.rows) : undefined;
     if (full) {
-      for (const node of document.querySelectorAll(interactive)) {
-        if (discoverable(node)) targets.add(node);
-        if (targets.size >= liveBudget.rows) break;
+      for (const row of snapshot!.elements) {
+        const node = this.collection.get(row.referenceId!);
+        if (node) targets.add(node);
       }
     } else {
       for (const root of dirty) {
@@ -135,12 +138,12 @@ export class LiveDiscovery {
         const nameSource = root.closest('[id]');
         if (nameSource?.id && nameSource.id.length <= 180) {
           const selector = attributeSelector('aria-labelledby', nameSource.id).replace('=', '~=');
-          for (const dependent of document.querySelectorAll(selector)) {
+          for (const dependent of (nameSource.getRootNode() as Document | ShadowRoot).querySelectorAll(selector)) {
             if (discoverable(dependent)) targets.add(dependent);
             if (targets.size >= liveBudget.rows) break;
           }
         }
-        for (const node of root.querySelectorAll(interactive)) {
+        for (const node of openTrees(root).flatMap(tree => Array.from(tree.querySelectorAll(interactive)))) {
           if (discoverable(node)) targets.add(node);
           if (targets.size >= liveBudget.rows) break;
         }
@@ -166,10 +169,15 @@ export class LiveDiscovery {
       if ((!node || !visible(node)) && !removed.includes(ref)) removed.push(ref);
     }
     const upserts: ElementModel[] = [];
+    const snapshotRows = new Map(snapshot?.elements.map(row => [row.referenceId, row]));
+    const scopeBuilders = new WeakMap<Node, ReturnType<ElementCollection['builder']>>();
     for (const node of targets) {
       const ref = this.collection.id(node);
       if (!this.known.has(ref) && this.known.size >= liveBudget.rows + trackedLimit) continue;
-      const row = build(node, !discoverable(node)).row;
+      const tree = node.getRootNode();
+      let scoped = tree === document ? build : scopeBuilders.get(tree);
+      if (!scoped) {scoped = this.collection.builderFor(node, this.settings); scopeBuilders.set(tree, scoped);}
+      const row = snapshotRows.get(ref) ?? scoped(node, !discoverable(node)).row;
       const prior = this.known.get(ref);
       if (full || !prior || JSON.stringify(prior) !== JSON.stringify(row)) upserts.push(row);
       if (discoverable(node) || this.tracked.has(ref)) this.known.set(ref, row);
@@ -184,6 +192,7 @@ export class LiveDiscovery {
     this.collection.prune();
     this.emit({type: 'update', version: lifecycleVersion, session: this.session, sequence: ++this.sequence, context,
       ready: busy ? 'loading' : this.timer ? 'updating' : 'observed', full, upserts, removed, proposals, collections,
+      contexts: snapshot ? snapshot.contexts ?? [] : undefined,
       metrics: {records, roots: dirty.length, fullScans: this.fullScans, durationMs: Math.round(performance.now() - start)}});
   }
 

@@ -5,6 +5,7 @@ import {instability} from '../core/scoring';
 import {accessibleRole, normalize, pageText} from './accessibility';
 import {ElementCollection, inspectable, interactive, visible} from './elements';
 import {attributeSelector, classifyMatches, createDomMatcher} from './validation';
+import {accessibleDocuments, frameDocument, openTrees, parentInContext, type Tree} from './contexts';
 
 const boundaries = 'article,section,li,tr,form,dialog,fieldset,[role=dialog],[role=group],[role=listitem],[data-slot],[data-component],div[class]';
 const assertions = 'h1,h2,h3,h4,h5,h6,p,img,td,th,[role=heading],[role=status],[role=alert],[data-component-member]';
@@ -19,9 +20,10 @@ function kind(element: Element): string {
 
 function path(element: Element, root: Element): string {
   const steps = [];
-  for (let node: Element | null = element; node && node !== root; node = node.parentElement) {
+  for (let node: Element | null = element; node && node !== root; node = parentInContext(node)) {
     const key = kind(node);
-    const siblings = Array.from(node.parentElement?.children ?? []).filter(sibling => kind(sibling) === key);
+    const siblings = Array.from(node.parentNode && 'children' in node.parentNode ? node.parentNode.children as HTMLCollection : [])
+      .filter(sibling => kind(sibling) === key);
     steps.unshift(`${key}:${siblings.indexOf(node)}`);
   }
   return steps.join('/');
@@ -29,9 +31,18 @@ function path(element: Element, root: Element): string {
 
 function slots(root: Element) {
   const result = new Map<string, Element>();
-  for (const element of root.querySelectorAll(`${interactive},${assertions}`)) {
-    if (inspectable(element) && visible(element)) result.set(path(element, root), element);
-    if (result.size >= featuresLimit) break;
+  const trees: Tree[] = openTrees(root);
+  for (let index = 0; index < trees.length && result.size < featuresLimit; index++) {
+    const tree = trees[index];
+    for (const element of tree.querySelectorAll(`${interactive},${assertions}`)) {
+      if (inspectable(element) && visible(element)) result.set(path(element, root), element);
+      if (result.size >= featuresLimit) break;
+    }
+    for (const frame of tree.querySelectorAll('iframe')) {
+      if (trees.length >= 24) break;
+      const child = frameDocument(frame);
+      if (child) trees.push(...openTrees(child, 24 - trees.length));
+    }
   }
   return result;
 }
@@ -69,7 +80,7 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
   const scopedBuilders = roots.map(root => collection.builder(settings, root));
   const used = new Set<string>();
   const instances = roots.map((root, index) => {
-    const row = pageBuilder(root, true).row;
+    const row = root.getRootNode() === document ? pageBuilder(root, true).row : collection.builderFor(root, settings)(root, true).row;
     const heading = [...membersByRoot[index].values()].find(element => accessibleRole(element) === 'heading');
     const key = heading ? normalize(pageText(heading, text)).slice(0, 120) : '';
     const base = identifier(key || row.label || root.localName) + '_component';
@@ -82,7 +93,10 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
   const members: ComponentMember[] = slotKeys.flatMap((key, index) => {
     const rowIndex = membersByRoot.findIndex(group => group.has(key));
     const representative = membersByRoot[rowIndex].get(key)!;
-    const row = scopedBuilders[rowIndex](representative, true).row;
+    const scope = roots[rowIndex];
+    const build = representative.getRootNode() === scope.getRootNode() ? scopedBuilders[rowIndex] :
+      collection.builderFor(representative, settings, scope);
+    const row = build(representative, true).row;
     const candidates = new Map<string, Candidate>();
     for (const candidate of row.candidates) if (locatorIsValid(candidate.locator)) candidates.set(candidate.id, candidate);
     // Headings and repeated optional slots often vary in text. A tag CSS
@@ -133,7 +147,7 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
   if (observedRoots.length > 1) {
     const parent = observedRoots[0].parentElement;
     const parentLocator = parent && observedRoots.every(root => root.parentElement === parent)
-      ? componentRootCandidate(pageBuilder(parent, true).row)?.locator : undefined;
+      ? componentRootCandidate(collection.builderFor(parent, settings)(parent, true).row)?.locator : undefined;
     const selectors = rootSelectors(observedRoots).map((selector): Locator => ({strategy: 'css', selector}));
     const alternatives = [...selectors, ...selectors.flatMap(child => parentLocator ?
       [{strategy: 'chain', root: parentLocator, child} as Locator] : [])];
@@ -182,7 +196,8 @@ export function discoverComponents(collection: ElementCollection, settings: Loca
   let examined = 0;
   let candidateRoots = 0;
   let comparisons = 0;
-  for (const root of scope.querySelectorAll(boundaries)) {
+  const trees = scope === document ? accessibleDocuments(document).flatMap(frame => openTrees(frame)) : openTrees(scope);
+  for (const root of trees.flatMap(tree => Array.from(tree.querySelectorAll(boundaries)))) {
     if (examined >= boundaryLimit) break;
     examined++;
     const parent = root.parentElement;

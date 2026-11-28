@@ -1,3 +1,5 @@
+import {containsInContext, viewportRect} from './contexts';
+
 type Style = 'hover' | 'target' | 'selected' | 'previous' | 'panel' | 'component';
 
 export class Highlights {
@@ -101,7 +103,8 @@ export class Highlights {
     let anchor: DOMRect | undefined;
     const focused = this.boxes.get('target') ?? this.boxes.get('hover') ??
       this.boxes.get('panel') ?? this.boxes.get('selected');
-    const scope = focused?.element.closest('dialog:modal,[popover]:popover-open');
+    const scope = focused?.element.ownerDocument === document
+      ? focused.element.closest('dialog:modal,[popover]:popover-open') : undefined;
     const hostParent = scope ?? document.documentElement;
     if (this.host && this.host.parentElement !== hostParent) hostParent.append(this.host);
     for (const [key, {style, element, box}] of this.boxes) {
@@ -110,10 +113,10 @@ export class Highlights {
         this.boxes.delete(key);
         continue;
       }
-      const rect = element.getBoundingClientRect();
+      const rect = viewportRect(element);
       const offscreen = rect.bottom <= 0 || rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth;
-      box.hidden = Boolean(scope && !scope.contains(element)) || offscreen || !rect.width || !rect.height ||
-        getComputedStyle(element).visibility !== 'visible';
+      box.hidden = Boolean(scope && !containsInContext(scope, element)) || offscreen || !rect.width || !rect.height ||
+        element.ownerDocument.defaultView?.getComputedStyle(element).visibility !== 'visible';
       if (box.hidden) continue;
       if (style === 'hover' || style === 'target') anchor = rect;
       const geometry = `translate(${rect.left}px,${rect.top}px)`;

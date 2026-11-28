@@ -9,6 +9,8 @@ import {InspectorControls, useInspector} from './inspector';
 import {RuntimeControls, useRuntime} from './runtime';
 import {ComponentsPanel} from './components';
 import {useLive} from './live';
+import {contextLabel, type ContextBoundary} from '../core/context';
+import {scanAuthorizedFrames, scopeEmbeddedRow, type FrameScan} from './frames';
 
 const settingsKey = 'locatorSettings';
 type PageIntent = 'scan' | 'inspect' | 'live';
@@ -24,7 +26,11 @@ function App() {
   const running = useRef(false);
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
-  const runtime = useRuntime(model, setModel, tab, settings?.playwrightTestAttribute);
+  const [embedded, setEmbedded] = useState<FrameScan[]>([]);
+  const [embeddedMessage, setEmbeddedMessage] = useState('');
+  const [contextFilter, setContextFilter] = useState('');
+  const embeddedInspection = useRef<FrameScan | undefined>(undefined);
+  const runtime = useRuntime(model, setModel, tab, settings?.playwrightTestAttribute, embedded);
   const live = useLive(model, setModel, runtime.invalidate);
   const [autoValidate, setAutoValidate] = useState(false);
   const latestValidation = useRef({model, validate: runtime.validate, busy: runtime.busy});
@@ -39,7 +45,7 @@ function App() {
       const current = latestValidation.current;
       if (current.busy || current.model?.documentKey !== update.context.documentKey) return;
       const jobs = current.model.elements.flatMap(element => {
-        if (element.stale || !element.selected || !changed.has(element.referenceId)) return [];
+        if (element.stale || element.context?.external || !element.selected || !changed.has(element.referenceId)) return [];
         const candidate = selectedCandidate(element);
         return candidate ? [{element, candidates: [candidate]}] : [];
       }).slice(0, 5);
@@ -51,6 +57,13 @@ function App() {
   }, [autoValidate, live.phase, live.update, runtime.status?.connected]);
   const selectedRow = useRef<HTMLElement>(null);
   const inspector = useInspector(model, (incoming, sourceTab) => {
+    const frame = embeddedInspection.current;
+    if (frame && model && sourceTab === tab) {
+      const rows = incoming.elements.map(row => ({...scopeEmbeddedRow(row, frame.context), selected: true}));
+      setEmbedded(items => items.map(item => item.documentId === frame.documentId ?
+        {...item, rows: [...new Map([...item.rows, ...rows].map(row => [row.id, row])).values()]} : item));
+      incoming = {...incoming, elements: rows, documentKey: model.documentKey, url: model.url};
+    }
     const id = incoming.elements[0]?.id;
     if (!id) return;
     setTab(sourceTab);
@@ -78,6 +91,36 @@ function App() {
     chrome.tabs.onUpdated?.addListener(invalidate);
     return () => chrome.tabs.onUpdated?.removeListener(invalidate);
   }, [tab]);
+
+  useEffect(() => {
+    const navigation = chrome.webNavigation?.onCommitted;
+    if (!embedded.length || !navigation) return;
+    const changed = (event: chrome.webNavigation.WebNavigationTransitionCallbackDetails) => {
+      if (event.tabId !== tab) return;
+      const replaced = embedded.filter(frame => event.frameId === 0 ||
+        (event.frameId === frame.frameId && event.documentId !== frame.documentId));
+      if (!replaced.length) return;
+      runtime.invalidate();
+      const old = new Set(replaced.flatMap(frame => frame.rows.map(row => row.id)));
+      setEmbedded(items => items.filter(frame => !replaced.includes(frame)));
+      setModel(current => current && {...current, elements: current.elements.map(row =>
+        old.has(row.id) ? {...row, stale: true} : row)});
+    };
+    const revoked = (permissions: chrome.permissions.Permissions) => {
+      if (!permissions.origins?.length && !permissions.permissions?.includes('webNavigation')) return;
+      inspector.stop();
+      runtime.invalidate();
+      setEmbedded([]);
+      setModel(current => current && {...current, elements: current.elements.map(row =>
+        row.context?.external ? {...row, stale: true} : row)});
+    };
+    navigation.addListener(changed);
+    chrome.permissions.onRemoved.addListener(revoked);
+    return () => {
+      navigation.removeListener(changed);
+      chrome.permissions.onRemoved.removeListener(revoked);
+    };
+  }, [embedded, tab]);
   useEffect(() => {
     chrome.storage.local.get(settingsKey).then(stored => {
       const data = stored[settingsKey];
@@ -107,7 +150,7 @@ function App() {
     }
   }
 
-  async function openPage(intent: PageIntent, approved?: SiteAccess) {
+  async function openPage(intent: PageIntent, approved?: SiteAccess, path?: ContextBoundary[]) {
     if (running.current || !settings) return;
     running.current = true;
     setBusy(true);
@@ -149,6 +192,11 @@ function App() {
       }
 
       const documentId = injected[0]?.documentId;
+      if (tab !== active.id) {
+        setEmbedded([]);
+        setEmbeddedMessage('');
+        setContextFilter('');
+      }
       if (live.tab !== undefined && live.tab !== active.id) live.stop();
       if (intent === 'live') {
         if (tab !== null && tab !== active.id) setModel(null);
@@ -157,17 +205,18 @@ function App() {
         return;
       }
       if (intent === 'inspect') {
+        embeddedInspection.current = undefined;
         const [current] = await chrome.tabs.query({active: true, currentWindow: true});
         if (current?.id !== active.id || current.url !== active.url) throw Error('The active page changed. Start inspection again.');
         inspector.start(active.id, active.windowId, settings, documentId);
         return;
       }
       const {staleIds, ...result}: PageModel & {staleIds?: string[]} = await chrome.tabs.sendMessage(active.id, {
-        type: 'POM_SCAN', settings, tracked: model?.elements.flatMap(element => element.referenceId ? [element.referenceId] : []),
+        type: 'POM_SCAN', settings, path, tracked: model?.elements.flatMap(element => element.referenceId ? [element.referenceId] : []),
       }, documentId ? {documentId} : {frameId: 0});
       setTab(active.id);
       setModel(current => {
-        const merged = mergePage(current, result);
+        const merged = mergePage(current, path ? {...result, contexts: current?.contexts} : result);
         if (!staleIds?.length) return merged;
         return {...merged, elements: merged.elements.map(element =>
           element.referenceId && staleIds.includes(element.referenceId) ? {...element, stale: true} : element)};
@@ -179,6 +228,10 @@ function App() {
       setBusy(false);
     }
   }
+
+  const contextOptions = [...new Map((model?.elements ?? []).flatMap(row => row.context
+    ? [[contextLabel(row.context), row.context] as const] : [])).entries()];
+  const filteredContext = contextOptions.find(([label]) => label === contextFilter)?.[1];
 
   async function grantSiteAccess(access: SiteAccess) {
     try {
@@ -201,10 +254,54 @@ function App() {
     });
   }
 
+  async function allowEmbedded(origin: string) {
+    const documentKey = model?.documentKey;
+    if (tab === null || !settings || !documentKey || running.current) return;
+    running.current = true;
+    setBusy(true);
+    setEmbeddedMessage('');
+    try {
+      const address = new URL(origin);
+      const granted = await chrome.permissions.request({permissions: ['webNavigation'],
+        origins: [address.protocol + '//' + address.hostname + '/*']});
+      if (!granted) {
+        setEmbeddedMessage('Access was declined. The rest of the page can still be scanned.');
+        return;
+      }
+      const [active] = await chrome.tabs.query({active: true, currentWindow: true});
+      if (active?.id !== tab) throw Error('Switch to the tab with the embedded frame and try again.');
+      const frames = await scanAuthorizedFrames(tab, origin, settings);
+      if (!frames.length) {
+        setEmbeddedMessage('The frame is unavailable or its owner could not be verified.');
+        return;
+      }
+      const [current] = await chrome.tabs.query({active: true, currentWindow: true});
+      if (current?.id !== tab || current.url !== active.url) throw Error('The active document changed. Scan again.');
+      setEmbedded(items => [...items.filter(frame => frame.context.origin !== origin), ...frames]);
+      const rows = frames.flatMap(frame => frame.rows);
+      setModel(page => {
+        if (page?.documentKey !== documentKey) return page;
+        const available = new Set(rows.map(row => row.id));
+        const preserved = page.elements.map(row => row.context?.external && row.context.origin === origin && !available.has(row.id) ?
+          {...row, stale: true} : row);
+        return mergePage({...page, elements: preserved}, {...page, elements: rows});
+      });
+      setEmbeddedMessage(`${frames.length} embedded frame(s) accessible.`);
+    } catch (cause) {
+      setEmbeddedMessage(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
+
   async function highlight(element: ElementModel) {
     if (tab === null) return;
     try {
-      const result = await chrome.tabs.sendMessage(tab, {type: 'POM_HIGHLIGHT', id: element.referenceId ?? element.id}, {frameId: 0});
+      const frame = embedded.find(item => item.rows.some(row => row.id === element.id));
+      if (element.context?.external && !frame) throw Error('Scan the embedded frame again before highlighting.');
+      const result = await chrome.tabs.sendMessage(tab, {type: 'POM_HIGHLIGHT', id: element.referenceId ?? element.id},
+        frame ? {documentId: frame.documentId} : {frameId: 0});
       if (!result?.ok) {
         update(element.id, {stale: true});
         throw Error('Element no longer available. Inspect the replacement to add it.');
@@ -273,6 +370,31 @@ function App() {
       <small role="status">{pick.duplicate ? 'Element already in collection.' : 'Element added to collection.'}</small>}
     {model && <>
       <small>{model.url}</small>
+      {!!model.contexts?.length && <details>
+        <summary>Browsing contexts ({model.contexts.length})</summary>
+        <label>Filter by browsing context
+          <select value={contextFilter} onChange={event => setContextFilter(event.target.value)}>
+            <option value="">All contexts</option>
+            <option value="top">Top document</option>
+            {contextOptions.map(([label]) => <option key={label} value={label}>{label}</option>)}
+          </select>
+        </label>
+        <button disabled={busy || !contextFilter || Boolean(filteredContext?.external) ||
+          (contextFilter !== 'top' && !filteredContext)} onClick={() => void openPage('scan', undefined, filteredContext?.path ?? [])}>
+          Scan selected context
+        </button>
+        <small>Open shadow roots are discoverable. Closed or otherwise unobservable roots are unavailable.</small>
+        <ul>{model.contexts.map((context, index) => <li key={index}>{contextLabel(context)} · {
+          embedded.some(frame => contextLabel(frame.context) === contextLabel(context)) ? 'accessible' : context.state}</li>)}</ul>
+        {[...new Set(model.contexts.flatMap(context => context.origin ? [context.origin] : []))].map(origin =>
+          <button key={origin} disabled={busy} onClick={() => void allowEmbedded(origin)}>Scan embedded frames from {origin}</button>)}
+        {embedded.map(frame => <button key={frame.documentId} disabled={!settings || busy} onClick={() => {
+          if (tab === null || !settings) return;
+          embeddedInspection.current = frame;
+          inspector.start(tab, undefined, settings, frame.documentId);
+        }}>Inspect {contextLabel(frame.context)}</button>)}
+        {embeddedMessage && <p role="status">{embeddedMessage}</p>}
+      </details>}
       {settings && tab !== null && <ComponentsPanel model={model} settings={settings} setModel={setModel}
         liveSuggestions={live.update?.proposals}
         request={(type, value) => chrome.tabs.sendMessage(tab, {type, documentKey: model.documentKey, ...value}, {frameId: 0})}
@@ -301,27 +423,32 @@ function App() {
           const candidate = selectedCandidate(element) ?? element.candidates[0];
           return element.selected && candidate ? [{element, candidates: [candidate]}] : [];
         }))}>Validate selected elements</button>}
-      {model.elements.map((element, index) => <article key={element.id} ref={pick?.id === element.id ? selectedRow : undefined}>
+      {model.elements.map((element, index) => {
+        if (contextFilter && (element.context ? contextLabel(element.context) : 'top') !== contextFilter) return null;
+        return <article key={element.id} ref={pick?.id === element.id ? selectedRow : undefined}>
         <label>
           <input type="checkbox" checked={element.selected} onChange={event => update(element.id, {selected: event.target.checked})}/>
           {' '}{element.label}
         </label>
         <input aria-label="Python element name" type="text" value={element.name}
           onChange={event => update(element.id, {name: event.target.value})}/>
+        {element.context && <small>{contextLabel(element.context)}</small>}
         <LocatorControls element={element} onChoice={choice => update(element.id, {choice})}
-          onValidate={runtime.status?.connected && !runtime.busy ? candidates => void runtime.validate([{element, candidates}]) : undefined}/>
+          onValidate={runtime.status?.connected && !runtime.busy ?
+            candidates => void runtime.validate([{element, candidates}]) : undefined}/>
         {element.stale && <small className="error">{element.availability === 'unavailable'
           ? 'Unavailable in the current application state. Review any replacement before using it.'
           : 'Detached element. Inspect its replacement to add it.'}</small>}
         <div className="actions">
           <button disabled={element.stale} onClick={() => void highlight(element)}>Highlight</button>
-          {inspector.state === 'active' && <button disabled={element.stale}
+          {inspector.state === 'active' && <button disabled={element.stale || Boolean(element.context?.external) !== Boolean(embeddedInspection.current)}
             onClick={() => inspector.send({type: 'inspect', id: element.referenceId ?? element.id})}>Inspect</button>}
           <button disabled={index === 0} onClick={() => reorder(element.id, -1)}>Move up</button>
           <button disabled={index === model.elements.length - 1} onClick={() => reorder(element.id, 1)}>Move down</button>
           <button onClick={() => remove(element.id)}>Remove</button>
         </div>
-      </article>)}
+      </article>;
+      })}
       <h2>Python preview</h2>
       {generationError && <p className="error">{generationError}</p>}
       {!!model.components?.length && <select aria-label="Python output file" value={file} onFocus={() => {

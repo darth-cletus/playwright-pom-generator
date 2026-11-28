@@ -3,11 +3,13 @@ import {defaultSettings} from '../core/locator';
 import {ElementCollection} from './elements';
 import {Highlights} from './highlight';
 import {Inspector} from './inspector';
-import {RuntimeCorrelation} from './runtime-correlation';
+import {readSharedMarker, RuntimeCorrelation} from './runtime-correlation';
 import {describeComponent, discoverComponents, relativeComponentRoot} from './components';
 import {lifecyclePort, lifecycleVersion, type LiveCommand} from '../core/lifecycle';
 import {ApplicationLifecycle} from './lifecycle';
 import {LiveDiscovery} from './live-discovery';
+import {announceFrame, correlateFrame, frameNonce, frameOrigin} from './frame-bridge';
+import {readContextPath} from '../core/context';
 
 function install() {
   const collection = new ElementCollection();
@@ -30,10 +32,20 @@ function install() {
 
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (sender.id && sender.id !== chrome.runtime.id) return;
-    if (message?.type === 'POM_SCAN') {
-      const settings = message.settings === undefined ? defaultSettings : readSettings(message.settings);
+    if (message?.type === 'POM_FRAME_WAIT' && sender.id === chrome.runtime.id && frameNonce(message.nonce) && frameOrigin(message.origin)) {
+      const settings = readSettings(message.settings);
       if (settings) {
-        const page = collection.scan(settings);
+        correlateFrame(message.nonce, message.origin, settings.playwrightTestAttribute, reply);
+        return true;
+      }
+    } else if (message?.type === 'POM_FRAME_ANNOUNCE' && sender.id === chrome.runtime.id &&
+      frameNonce(message.nonce) && frameOrigin(message.origin)) {
+      reply(announceFrame(message.nonce, message.origin));
+    } else if (message?.type === 'POM_SCAN') {
+      const settings = message.settings === undefined ? defaultSettings : readSettings(message.settings);
+      const path = message.path === undefined ? undefined : readContextPath(message.path);
+      if (settings && (message.path === undefined || path)) {
+        const page = collection.scan(settings, message.embedded === true ? 500 : undefined, path);
         const staleIds = Array.isArray(message.tracked) ? message.tracked.filter((id: unknown) =>
           typeof id === 'string' && id.startsWith(collection.documentKey + ':') && !collection.get(id)) : [];
         reply({...page, staleIds});
@@ -52,7 +64,7 @@ function install() {
       typeof message.referenceId === 'string') {
       const settings = readSettings(message.settings);
       const element = collection.get(message.referenceId);
-      reply(settings && element ? collection.builder(settings)(element, true).row : null);
+      reply(settings && element ? collection.builderFor(element, settings)(element, true).row : null);
     } else if (message?.type === 'POM_COMPONENT_HIGHLIGHT' && message.documentKey === collection.documentKey) {
       const roots = references(message.references);
       if (roots) highlights.flashComponents(roots);
@@ -67,7 +79,9 @@ function install() {
     } else if (message?.type === 'POM_RUNTIME_MARK' && typeof message.documentKey === 'string' &&
       (message.scopeId === undefined || typeof message.scopeId === 'string') &&
       (message.referenceId === undefined || typeof message.referenceId === 'string')) {
-      reply(runtime.begin(message.documentKey, message.referenceId, message.scopeId) ?? null);
+      const shared = readSharedMarker(message.shared);
+      if (message.shared !== undefined && (!shared || sender.id !== chrome.runtime.id || window === window.top)) return;
+      reply(runtime.begin(message.documentKey, message.referenceId, message.scopeId, shared) ?? null);
     } else if (message?.type === 'POM_RUNTIME_RELEASE' && typeof message.attribute === 'string') {
       reply(runtime.release(message.attribute));
     } else if (message?.type === 'POM_HIGHLIGHT' && typeof message.id === 'string') {

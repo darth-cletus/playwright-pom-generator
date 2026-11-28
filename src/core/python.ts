@@ -1,9 +1,10 @@
 import {selectedCandidate, testIdAttributes, type Locator} from './locator';
-import type {PageModel} from './model';
+import {supportsSchema, type PageModel} from './model';
 import {identifier, reserved} from './python-names';
 import {currentEvidence, runtimeRejects, type RuntimePolicy} from './runtime';
-import {componentRootCandidate, memberCandidate, modelSchemaVersion, pythonModule, validateComponentGraph, type ComponentDefinition} from './components';
+import {componentRootCandidate, memberCandidate, pythonModule, validateComponentGraph, type ComponentDefinition} from './components';
 import type {Action} from './model';
+import {stableTestId} from './lifecycle';
 
 export {identifier} from './python-names';
 
@@ -16,6 +17,7 @@ export function pythonLocator(locator: Locator, page = 'page'): string {
     case 'role': return `get_by_role(${quote(locator.role)}, name=${quote(locator.name)}, exact=True)`;
     case 'alt': return `get_by_alt_text(${quote(locator.value)}, exact=True)`;
     case 'chain': return `${pythonLocator(locator.root, page)}.${pythonLocator(locator.child, page)}`;
+    case 'frame': return `${pythonLocator(locator.root, page)}.content_frame.${pythonLocator(locator.child, page)}`;
     case 'filter': return `${pythonLocator(locator.base, page)}.filter(${locator.has
       ? `has=${page}.${pythonLocator(locator.has, page)}` : `has_text=${quote(locator.text ?? '')}`})`;
     case 'index': return `${pythonLocator(locator.base, page)}.nth(${locator.index})`;
@@ -120,7 +122,7 @@ function render(model: PageModel, policy: RuntimePolicy) {
     throw Error('Invalid Python class name');
   }
   const definitions = model.components ?? [];
-  if (model.schemaVersion !== undefined && model.schemaVersion !== 1 && model.schemaVersion !== modelSchemaVersion) {
+  if (!supportsSchema(model.schemaVersion)) {
     throw Error('Unsupported page object schema version.');
   }
   validateComponentGraph(definitions, className);
@@ -214,4 +216,3 @@ export function generatePackage(model: PageModel, policy: RuntimePolicy = 'brows
     ['from playwright.sync_api import Page', ...imports].join('\n') + note + '\n\n\n' + page + '\n';
   return files;
 }
-import {stableTestId} from './lifecycle';

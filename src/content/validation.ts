@@ -1,12 +1,9 @@
 import {locatorKey, type Locator, type Validation, type ValidationMethod} from '../core/locator';
 import {accessibleName, accessibleRole, associatedLabels, isInaccessible, normalize, pageText} from './accessibility';
+import {attributeSelector, containsInContext, frameDocument, openTrees, type Tree} from './contexts';
+export {attributeSelector} from './contexts';
 
 export type LocatorValidator = (locator: Locator, target: Element) => Validation;
-
-export function attributeSelector(attribute: string, value: string): string {
-  return `[${CSS.escape(attribute)}="${Array.from(value, char =>
-    /["\\\u0000-\u001f\u007f]/.test(char) ? `\\${char.codePointAt(0)!.toString(16)} ` : char).join('')}"]`;
-}
 
 export function classifyMatches(matches: readonly Element[], target: Element, method: ValidationMethod): Validation {
   const count = matches.length;
@@ -18,11 +15,17 @@ export function classifyMatches(matches: readonly Element[], target: Element, me
 }
 
 export function createDomMatcher(document: Document, text = new WeakMap<Element, string>()) {
-  const caches = new WeakMap<Document | Element, Map<string, Element[]>>();
-  const elementsByScope = new WeakMap<Document | Element, Element[]>();
-  const indexesByScope = new WeakMap<Document | Element, Map<string, Map<string, Element[]>>>();
+  const caches = new WeakMap<Tree, Map<string, Element[]>>();
+  const elementsByScope = new WeakMap<Tree, Element[]>();
+  const indexesByScope = new WeakMap<Tree, Map<string, Map<string, Element[]>>>();
+  const trees = new WeakMap<Tree, Tree[]>();
+  function query(scope: Tree, selector: string) {
+    let roots = trees.get(scope);
+    if (!roots) {roots = openTrees(scope); trees.set(scope, roots);}
+    return roots.flatMap(root => Array.from(root.querySelectorAll(selector)));
+  }
 
-  function semanticIndex(strategy: string, scope: Document | Element): Map<string, Element[]> {
+  function semanticIndex(strategy: string, scope: Tree): Map<string, Element[]> {
     let indexes = indexesByScope.get(scope);
     if (!indexes) {indexes = new Map(); indexesByScope.set(scope, indexes);}
     const cached = indexes.get(strategy);
@@ -35,7 +38,7 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
     }
     let elements = elementsByScope.get(scope);
     if (!elements) {
-      elements = Array.from(scope.querySelectorAll('*'));
+      elements = query(scope, '*');
       elementsByScope.set(scope, elements);
     }
     for (const element of elements) {
@@ -61,7 +64,7 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
     return index;
   }
 
-  function match(locator: Locator, scope: Document | Element = document): Element[] {
+  function match(locator: Locator, scope: Tree = document): Element[] {
       let queryCache = caches.get(scope);
       if (!queryCache) {queryCache = new Map(); caches.set(scope, queryCache);}
       const key = locatorKey(locator);
@@ -69,11 +72,17 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
       if (!matches) {
         switch (locator.strategy) {
           case 'css':
-            matches = Array.from(scope.querySelectorAll(locator.selector));
+            matches = query(scope, locator.selector);
             break;
           case 'chain': {
             const roots = match(locator.root, scope);
             matches = roots.length === 1 ? match(locator.child, roots[0]) : [];
+            break;
+          }
+          case 'frame': {
+            const roots = match(locator.root, scope);
+            const child = roots.length === 1 ? frameDocument(roots[0]) : null;
+            matches = child ? match(locator.child, child) : [];
             break;
           }
           case 'filter':
@@ -85,7 +94,7 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
             matches = match(locator.base, scope).slice(locator.index, locator.index + 1);
             break;
           case 'test-id':
-            matches = Array.from(scope.querySelectorAll(attributeSelector(locator.attribute, locator.value)));
+            matches = query(scope, attributeSelector(locator.attribute, locator.value));
             break;
           case 'role':
             matches = semanticIndex('role', scope).get(JSON.stringify([locator.role, locator.name])) ?? [];
@@ -96,11 +105,13 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
             break;
           default: {
             const attribute = locator.strategy === 'alt' ? 'alt' : locator.strategy;
-            matches = Array.from(scope.querySelectorAll(`[${attribute}]`)).filter(
+            matches = query(scope, `[${attribute}]`).filter(
               element => normalize(element.getAttribute(attribute) ?? '') === locator.value);
           }
         }
-        if (scope !== document) matches = matches.filter(element => element !== scope && scope.contains(element));
+        if (scope.nodeType === 1 && !['chain', 'frame', 'filter', 'index'].includes(locator.strategy)) {
+          matches = matches.filter(element => element !== scope && containsInContext(scope as Element, element));
+        }
         queryCache.set(key, matches);
       }
       return matches;
@@ -108,7 +119,7 @@ export function createDomMatcher(document: Document, text = new WeakMap<Element,
   return match;
 }
 
-export function createDomValidator(document: Document, text = new WeakMap<Element, string>(), scope?: Element): LocatorValidator {
+export function createDomValidator(document: Document, text = new WeakMap<Element, string>(), scope?: Tree): LocatorValidator {
   const match = createDomMatcher(document, text);
   return (locator, target) => {
     const method = locator.strategy === 'css' ? 'dom-css' : 'semantic-approximation';

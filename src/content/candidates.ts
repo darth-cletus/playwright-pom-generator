@@ -7,7 +7,8 @@ import {attributeSelector, type LocatorValidator} from './validation';
 function structuralSelector(element: Element, root?: Element): string {
   const parts: string[] = [];
   for (let current: Element | null = element; current && current !== root; current = current.parentElement) {
-    const siblings = current.parentElement?.children;
+    const parent = current.parentNode;
+    const siblings = parent && 'children' in parent ? parent.children as HTMLCollection : undefined;
     const index = siblings ? Array.prototype.indexOf.call(siblings, current) + 1 : 1;
     parts.unshift(`${CSS.escape(current.localName)}:nth-child(${index})`);
   }

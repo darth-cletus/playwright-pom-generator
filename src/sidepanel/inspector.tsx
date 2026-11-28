@@ -34,7 +34,9 @@ export function useInspector(model: PageModel | null,
   useEffect(() => {
     function activated(info: chrome.tabs.TabActiveInfo) {
       const current = connection.current;
-      if (current && current.window === info.windowId && current.tab !== info.tabId) end('Inspection stopped after switching tabs.');
+      if (current && (current.window === undefined || current.window === info.windowId) && current.tab !== info.tabId) {
+        end('Inspection stopped after switching tabs.');
+      }
     }
     function updated(tabId: number, change: chrome.tabs.TabChangeInfo) {
       if (connection.current?.tab === tabId && change.status === 'loading') end('Page navigation stopped inspection.');
@@ -74,7 +76,7 @@ export function useInspector(model: PageModel | null,
   }, [state, model]);
 
   function start(tab: number, window: number | undefined, settings: LocatorSettings, documentId?: string) {
-    if (connection.current) return;
+    if (connection.current) end('Switching inspection context.');
     setState('starting');
     setStatus('Starting inspector…');
     const port = chrome.tabs.connect(tab, documentId ? {name: inspectorPort, documentId} : {name: inspectorPort, frameId: 0});
