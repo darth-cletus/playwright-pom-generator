@@ -41,7 +41,7 @@ The trusted transformed fixture executes through Python Playwright. The no-edit 
 
 ## Verification and performance
 
-The POM-007 baseline passed 44 TypeScript, 32 Chromium and 18 companion tests. POM-008 adds two TypeScript and four Python tests, and extends the unpacked-browser runtime scenario to analyze an imported Python file, check its locator in Playwright, approve a replacement and preview the resulting diff.
+The POM-007 baseline passed 44 TypeScript, 32 Chromium and 18 companion tests. POM-008 passed 46 TypeScript, 32 Chromium and 22 Python tests, along with the production build and Ruff. The unpacked-browser scenario imports Python, checks its locator in Playwright, rejects and restores a proposal, detects a source conflict and previews a revision-checked diff. [Passing hosted workflow and screenshots](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46113652539)
 
 On the local Windows runner, static analysis of 250 assignments took 5.8 ms and preparing 25 changes took 12.1 ms. These measurements exclude file selection, HTTP transport and live locator checks. File selection is capped at ten Python files of 64 KiB each. The service enforces its existing HTTP body limit and bounds source AST depth and node count. Memory growth, concurrent soak and project-scale performance remain unmeasured.
 
@@ -62,7 +62,7 @@ File groups use separate basenames. Archive import, relative project paths, cros
 
 ## Git and compatibility
 
-Branch `feature/POM-008-lifecycle-management` is stacked on POM-007. Extension and companion use v0.8.0. Transport remains protocol v1, the source operations use contract 1, and existing model schemas through v3 stay supported.
+Branch `feature/POM-008-lifecycle-management` is stacked on POM-007. Extension and companion use v0.8.0. Transport remains protocol v1, the source operations use contract 1, and existing model schemas through v3 stay supported. [Draft pull request #7](https://github.com/darth-cletus/playwright-pom-generator/pull/7)
 
 ## Acceptance criteria
 
@@ -245,5 +245,5 @@ PASS records exercised or reviewed behavior. FAIL records an implementation gap.
 | AC-008.173 | Existing POM-002 through POM-007 functionality remains operational. | PASS | Local TypeScript, companion and Chromium suites, production build and persistent docs. |
 | AC-008.174 | DEF-001 regression tests continue to pass. | PASS | Local TypeScript, companion and Chromium suites, production build and persistent docs. |
 | AC-008.175 | The production browser extension builds successfully. | PASS | Local TypeScript, companion and Chromium suites, production build and persistent docs. |
-| AC-008.176 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted workflow verification pending. |
+| AC-008.176 | GitHub Actions workflows remain functional. | PASS | [Hosted suite passed on implementation commit 6c46a6f](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46113652539). |
 | AC-008.177 | Documentation accurately reflects implementation capabilities and limitations. | PASS | Local TypeScript, companion and Chromium suites, production build and persistent docs. |
