@@ -30,7 +30,7 @@ Extension v0.6.0 adds opt-in discovery on dynamic Chromium pages. The implementa
 
 ## Verification and demonstrations
 
-The baseline passed 39 TypeScript tests, 23 Chromium tests and 17 Python companion tests. POM-006 adds three TypeScript and four Chromium tests. Production bundling and TypeScript type checking passed. Python companion tests and the configured Ruff checks passed. Existing Chromium cases execute generated Python against real fixtures and exercise production side-panel startup and the companion. The hosted workflow already runs these suites and required no source changes.
+The baseline passed 39 TypeScript tests, 23 Chromium tests and 17 Python companion tests. The implementation passed 42 TypeScript tests, 27 Chromium tests and 17 Python companion tests. Production bundling, TypeScript type checking and the configured Ruff checks passed. Chromium coverage includes the DEF-001 startup regression and actual Playwright integration. The hosted workflow passed on implementation commit `59d5113` and uploaded the fixture screenshots. [Hosted verification and screenshots](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46086141014)
 
 Use `fixtures/dynamic.html` to inspect plan controls. The browser suite selects Dental plans, edits its Python name, and verifies that replacement retains both. It executes the exported Python against a new instance of the fixture after cloning the original button. It pauses while a portal inserts a quote action, then resumes and observes it. It exercises history push, replace, back and forward, query and hash changes, and a full reload. A second test changes an external label, recycles customer rows in a table advertising 250 records, opens and closes a dialog, and introduces an ambiguous test ID. The live component test reorders, duplicates and removes a plan card and examines rendered membership and unavailable instances. Existing companion coverage pairs the extension and rejects stale Playwright marker leases.
 
@@ -60,7 +60,7 @@ An indexed locator dependency graph and live component instance reconciliation w
 
 ## Git
 
-Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005 at `38c3080`. Review uses the POM-005 branch as its base. No release or tag was created.
+Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005 at `38c3080`. The draft pull request targets the POM-005 branch. [Draft pull request #5](https://github.com/darth-cletus/playwright-pom-generator/pull/5)
 
 ## Acceptance criteria
 
@@ -170,5 +170,5 @@ Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005
 | AC-006.102 | Existing POM-002 through POM-005 capabilities remain operational. | PASS | Existing TypeScript, Chromium and Python suites |
 | AC-006.103 | DEF-001 regression tests continue to pass. | PASS | Startup guard and extension startup browser tests |
 | AC-006.104 | The production browser extension builds successfully. | PASS | Production build passes |
-| AC-006.105 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted workflow verification pending. |
+| AC-006.105 | GitHub Actions workflows remain functional. | PASS | [Hosted verification for implementation commit 59d5113](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46086141014) |
 | AC-006.106 | Documentation accurately reflects the implementation and limitations. | PASS | Docs and decision record include limits |
