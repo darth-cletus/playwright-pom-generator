@@ -57,7 +57,7 @@ A header template such as `{{class}} generated with {{profile}}` becomes a Pytho
 
 ## Verification and determinism
 
-Baseline POM-008 passed 46 TypeScript, 32 Chromium and 22 Python tests. POM-009 adds eight TypeScript, two Chromium and one Python test and extends the paired source-review test to check targeted syntax and review profile inference. Trusted Python fixtures execute synchronous and asynchronous interaction methods, assertions, component factories and constructor forwarding. Unit tests compare repeated ZIP bytes and SHA-256 hashes. The unpacked extension test verifies profile persistence and exports a manifest.
+Baseline POM-008 passed 46 TypeScript, 32 Chromium and 22 Python tests. POM-009 passed 54 TypeScript, 34 Chromium and 23 Python tests, the production build and Ruff. Trusted Python fixtures execute synchronous and asynchronous interaction methods, assertions, component factories and constructor forwarding. Unit tests compare repeated ZIP bytes and SHA-256 hashes. The unpacked extension verifies profile persistence, profile inference, target syntax and manifest export. [Passing hosted workflow and screenshots](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46176930025)
 
 ## Performance and security
 
@@ -76,7 +76,7 @@ The profile editor supports declarative header templates and built-in formatting
 
 ## Git
 
-Branch `feature/POM-009-configurable-generation` is stacked on POM-008. Extension and companion are v0.9.0. The companion transport remains protocol v1. Profiles and manifests use schema 1, and existing automation model schema versions remain readable.
+Branch `feature/POM-009-configurable-generation` is stacked on POM-008. Extension and companion are v0.9.0. The companion transport remains protocol v1. Profiles and manifests use schema 1, and existing automation model schema versions remain readable. [Draft pull request #8](https://github.com/darth-cletus/playwright-pom-generator/pull/8)
 
 ## Acceptance criteria
 
@@ -291,6 +291,6 @@ PASS records verified behavior or direct implementation evidence. FAIL records a
 | AC-009.205 | Existing POM-002 through POM-008 functionality remains operational. | PASS | Local regression suites, DEF-001 startup test and production build pass. |
 | AC-009.206 | DEF-001 regression tests continue to pass. | PASS | Local regression suites, DEF-001 startup test and production build pass. |
 | AC-009.207 | The production extension builds successfully. | PASS | Local regression suites, DEF-001 startup test and production build pass. |
-| AC-009.208 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted verification pending. |
+| AC-009.208 | GitHub Actions workflows remain functional. | PASS | [Hosted suite passed on implementation commit 6937937](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46176930025). |
 | AC-009.209 | Documentation reflects actual supported functionality. | PASS | ADR and shared renderer consume validated page, component and locator types independently of the panel. |
 | AC-009.210 | Generation infrastructure provides documented extension points for POM-010 and POM-011. | PASS | ADR and shared renderer consume validated page, component and locator types independently of the panel. |
