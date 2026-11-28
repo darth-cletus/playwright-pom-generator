@@ -147,7 +147,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
     }
   }
 
-  async function validate(jobs: RuntimeJob[]) {
+  async function validate(jobs: RuntimeJob[], requestedTrial = trial) {
     const documentKey = model?.documentKey;
     const browserId = status?.browserId;
     const config = pairing.current;
@@ -176,8 +176,9 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
           const requestId = crypto.randomUUID();
           active.requestId = requestId;
           const candidates = job.candidates;
+          const {context: applicationRevision, ...correlation} = marker;
           const data = await request(config, 'validate', {requestId, browserId, documentKey,
-            correlation: marker, states, trial, locators: candidates.map(candidate => candidate.locator)}, signal);
+            correlation, states, trial: requestedTrial, locators: candidates.map(candidate => candidate.locator)}, signal);
           const results = readResults(data, {requestId, browserId, documentKey,
             strategies: candidates.map(candidate => candidate.locator.strategy)});
           const resultMarker = marker;
@@ -190,7 +191,7 @@ export function useRuntime(model: PageModel | null, setModel: Dispatch<SetStateA
           setModel(latest => {
             if (signal.aborted || latest?.documentKey !== documentKey) return latest;
             const evidence = candidates.map((candidate, index): RuntimeEvidence => ({
-              ...results[index], requestId, browserId, documentKey,
+              ...results[index], requestId, browserId, documentKey, applicationRevision,
               candidateId: candidate.id, elementId: job.element.id,
               testIdAttribute: candidate.locator.strategy === 'test-id' ? candidate.locator.attribute : testIdAttribute,
               expiresAt: Date.now() + evidenceLifetime, freshness: 'current',

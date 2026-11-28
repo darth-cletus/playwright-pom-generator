@@ -38,9 +38,11 @@ beforeAll(async () => {
   const fixture = await readFile(new URL('../../fixtures/inspector.html', import.meta.url));
   const login = await readFile(new URL('../../fixtures/login.html', import.meta.url));
   const components = await readFile(new URL('../../fixtures/components.html', import.meta.url));
+  const dynamic = await readFile(new URL('../../fixtures/dynamic.html', import.meta.url));
   server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
-    response.end(request.url === '/login' ? login : request.url?.startsWith('/components') ? components : fixture);
+    response.end(request.url === '/login' ? login : request.url?.startsWith('/components') ? components :
+      request.url?.startsWith('/dynamic') ? dynamic : fixture);
   });
   await new Promise<void>(resolveListening => server.listen(0, '127.0.0.1', resolveListening));
   const address = server.address();
@@ -89,6 +91,138 @@ async function start() {
   await clickPanel('Start inspection');
   await expect.poll(() => section().getByRole('status').textContent()).toContain('Inspector active');
 }
+
+it('preserves live edits across replacement, navigation and a pause', async () => {
+  await app.goto(fixtureUrl + '/dynamic');
+  await clickPanel('Enable live discovery');
+  const live = panel.getByRole('region', {name: 'Live discovery'});
+  const status = live.getByRole('status');
+  const row = (name: string) => panel.locator('article').filter({has: panel.getByRole('checkbox', {name, exact: true})});
+  await expect.poll(() => status.textContent()).toContain('/dynamic');
+  const dental = row('Dental plans');
+  await dental.getByRole('textbox', {name: 'Python element name'}).fill('dental_action');
+  await dental.getByRole('checkbox').check();
+  await app.evaluate(() => (window as any).dynamicFixture.replace());
+  await expect.poll(() => row('Vision plans').textContent()).toContain('Unavailable in the current application state');
+  expect(await dental.getByRole('textbox', {name: 'Python element name'}).inputValue()).toBe('dental_action');
+  expect(await dental.getByRole('checkbox').isChecked()).toBe(true);
+  expect(await dental.getByRole('button', {name: 'Highlight'}).isEnabled()).toBe(true);
+  await clickPanel('Pause live discovery');
+  await app.evaluate(() => (window as any).dynamicFixture.delayed());
+  await app.getByRole('button', {name: 'Request quote'}).waitFor();
+  expect(await row('Request quote').count()).toBe(0);
+  await clickPanel('Resume live discovery');
+  await expect.poll(() => row('Request quote').count()).toBe(1);
+  await app.evaluate(() => (window as any).dynamicFixture.navigate());
+  await expect.poll(() => status.textContent()).toContain('/dynamic/quote');
+  await app.evaluate(() => (window as any).dynamicFixture.replaceRoute());
+  await expect.poll(() => status.textContent()).toContain('/dynamic/confirm');
+  await app.evaluate(() => history.back());
+  await expect.poll(() => status.textContent()).toMatch(/live · \/dynamic ·/);
+  await app.evaluate(() => history.forward());
+  await expect.poll(() => status.textContent()).toContain('/dynamic/confirm');
+  expect(await dental.getByRole('textbox', {name: 'Python element name'}).inputValue()).toBe('dental_action');
+  const fullScans = async () => Number((await live.locator('details > p').first().textContent())?.match(/(\d+) full scans/)?.[1]);
+  const beforeSamePath = await fullScans();
+  await app.evaluate(() => history.pushState({}, '', '?state=quote'));
+  await expect.poll(fullScans).toBeGreaterThan(beforeSamePath);
+  const beforeHash = await fullScans();
+  await app.evaluate(() => { location.hash = 'plans'; });
+  await expect.poll(fullScans).toBeGreaterThan(beforeHash);
+  await app.reload();
+  await expect.poll(() => dental.count()).toBe(2);
+  await expect.poll(() => status.textContent()).toContain('live · /dynamic/confirm');
+  await expect.poll(() => dental.getByRole('textbox').evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value)))
+    .toContain('dental_action');
+}, 15_000);
+
+it('refreshes external labels and ambiguity and rejects recycled DOM identity', async () => {
+  await app.goto(fixtureUrl + '/dynamic');
+  await clickPanel('Enable live discovery');
+  const row = (name: string) => panel.locator('article').filter({has: panel.getByRole('checkbox', {name, exact: true})});
+  await row('Customer 0').getByRole('checkbox').check();
+  await app.evaluate(() => {
+    (window as any).dynamicFixture.rename();
+    (window as any).dynamicFixture.recycle();
+    (window as any).dynamicFixture.showDialog();
+  });
+  await expect.poll(() => row('Compare specialty plans').count()).toBe(1);
+  await expect.poll(() => row('Customer 0').textContent()).toContain('Unavailable in the current application state');
+  expect(await row('Customer 20').getByRole('checkbox').isChecked()).toBe(false);
+  await row('Close details').getByRole('checkbox').check();
+  await row('Compare specialty plans').getByRole('checkbox').check();
+  await app.evaluate(() => {
+    (window as any).dynamicFixture.hideDialog();
+    (window as any).dynamicFixture.duplicate();
+  });
+  await expect.poll(() => row('Close details').textContent()).toContain('Unavailable in the current application state');
+  await expect.poll(() => row('Compare specialty plans').locator('option').allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringMatching(/data-testid.*Ambiguous/i)]));
+}, 15_000);
+
+it('compares incremental and full discovery on dynamic workloads', async () => {
+  const timings: object[] = [];
+  for (const size of [1_000, 10_000, 50_000]) {
+    await app.goto(fixtureUrl + '/dynamic');
+    await app.evaluate(size => {
+      const parent = document.createElement('div');
+      const fragment = document.createDocumentFragment();
+      for (let n = 0; n < size; n++) fragment.append(document.createElement('span'));
+      parent.append(fragment);
+      document.body.append(parent);
+    }, size);
+    await clickPanel('Enable live discovery');
+    const live = panel.getByRole('region', {name: 'Live discovery'});
+    await expect.poll(() => live.getByRole('status').textContent()).toContain('live');
+    if (!(await live.locator('details').getAttribute('open'))) {
+      await live.getByText('Live discovery details').evaluate((element: HTMLElement) => element.click());
+    }
+    const start = performance.now();
+    const name = `New quote ${size}`;
+    await app.evaluate(label => {
+      const button = document.createElement('button');
+      button.textContent = label;
+      document.querySelector('#portal')!.append(button);
+    }, name);
+    await expect.poll(() => panel.getByRole('checkbox', {name, exact: true}).count(), {timeout: 10_000}).toBe(1);
+    const incrementalMs = Math.round(performance.now() - start);
+    const modelRows = await field().count();
+    const fullStart = performance.now();
+    await clickPanel('Full rescan');
+    await expect.poll(() => live.getByText(/2 full scans/).count(), {timeout: 10_000}).toBe(1);
+    const fullMs = Math.round(performance.now() - fullStart);
+    expect(await field().count()).toBe(modelRows);
+    timings.push({size, incrementalMs, fullMs});
+    await clickPanel('Disable live discovery');
+  }
+  console.info('Dynamic DOM benchmark (panel settlement)', JSON.stringify(timings));
+}, 45_000);
+
+it('updates rendered component membership, reordering and duplicate keys', async () => {
+  await app.goto(fixtureUrl + '/components');
+  await clickPanel('Enable live discovery');
+  const live = panel.getByRole('region', {name: 'Live discovery'});
+  await panel.getByText('Reusable components (0)', {exact: true}).click();
+  await clickPanel('Discover components');
+  const suggestion = panel.locator('article').filter({hasText: 'Dental, Vision, Life'});
+  await suggestion.getByRole('button', {name: 'Accept component'}).click();
+  await live.getByText('Live discovery details').evaluate((element: HTMLElement) => element.click());
+  await expect.poll(() => live.getByText(/3 rendered/).count()).toBe(1);
+  await app.evaluate(() => {
+    const dental = document.querySelector('[data-testid=dental-card]')!;
+    dental.parentElement!.append(dental);
+  });
+  await expect.poll(() => live.getByText(/Reordered/).count()).toBe(1);
+  await app.evaluate(() => {
+    const dental = document.querySelector('[data-testid=dental-card]')!;
+    dental.after(dental.cloneNode(true));
+  });
+  await expect.poll(() => live.getByText(/4 rendered.*Duplicate keys/).count()).toBe(1);
+  await app.getByTestId('vision-card').evaluate(node => node.remove());
+  await expect.poll(() => live.getByText(/3 rendered/).count()).toBe(1);
+  await panel.getByText(/Article component.*definition/).evaluate((element: HTMLElement) => element.click());
+  await expect.poll(() => panel.getByText('Component instance unavailable in this application state.').count()).toBe(1);
+}, 20_000);
 
 async function download(name: string) {
   const event = panel.waitForEvent('download');

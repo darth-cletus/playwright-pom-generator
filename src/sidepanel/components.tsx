@@ -15,6 +15,7 @@ interface Props {
   highlight: (element: ElementModel) => void;
   validate?: (jobs: RuntimeJob[]) => void;
   versionWarning?: boolean;
+  liveSuggestions?: ComponentDefinition[];
 }
 
 function runtimeJobs(definition: ComponentDefinition): RuntimeJob[] {
@@ -87,8 +88,9 @@ function runtimeJobs(definition: ComponentDefinition): RuntimeJob[] {
   return jobs;
 }
 
-export function ComponentsPanel({model, settings, request, setModel, highlight, validate, versionWarning}: Props) {
+export function ComponentsPanel({model, settings, request, setModel, highlight, validate, versionWarning, liveSuggestions}: Props) {
   const [suggestions, setSuggestions] = useState<ComponentDefinition[]>([]);
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [rootId, setRootId] = useState('');
@@ -216,16 +218,22 @@ export function ComponentsPanel({model, settings, request, setModel, highlight, 
         void run(() => define([root!.referenceId!]))}>Define component root</button>
     </div>
     {message && <small role="status">{message}</small>}
-    {suggestions.map(suggestion => <article key={suggestion.id}>
+    {[...new Map([...(liveSuggestions ?? []).filter(suggestion => !dismissed.includes(suggestion.id)),
+      ...suggestions].map(suggestion => [suggestion.id, suggestion])).values()]
+      .map(suggestion => <article key={suggestion.id}>
       <strong>{suggestion.title} · {suggestion.instances.length} instances</strong>
       <small>{suggestion.reasons.join(' ')}</small>
       <small>{suggestion.instances.map(instance => instance.key ?? instance.name).join(', ')}</small>
       <button onClick={() => {
         const previous = definitions.find(definition => definition.id === suggestion.id);
         save(previous ? preserveMemberEdits(previous, suggestion) : suggestion);
+        setDismissed(items => [...items, suggestion.id]);
         setSuggestions(items => items.filter(item => item.id !== suggestion.id));
       }}>Accept component</button>
-      <button onClick={() => setSuggestions(items => items.filter(item => item.id !== suggestion.id))}>Reject component</button>
+      <button onClick={() => {
+        setDismissed(items => [...items, suggestion.id]);
+        setSuggestions(items => items.filter(item => item.id !== suggestion.id));
+      }}>Reject component</button>
     </article>)}
     {definitions.map(definition => <details key={definition.id}>
       <summary>{definition.title} · definition</summary>
@@ -258,6 +266,7 @@ export function ComponentsPanel({model, settings, request, setModel, highlight, 
       <details>
         <summary>Instances ({definition.instances.length})</summary>
         {definition.instances.map(instance => <article key={instance.id}>
+          {instance.root.stale && <small>Component instance unavailable in this application state.</small>}
           <label>Instance name <input type="text" value={instance.name} onChange={event => save({...definition,
             instances: definition.instances.map(item => item.id === instance.id ? {...item, name: event.target.value} : item)})}/></label>
           <small>{instance.key}</small>

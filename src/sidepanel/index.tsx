@@ -8,9 +8,10 @@ import {LocatorControls, Settings} from './locator-controls';
 import {InspectorControls, useInspector} from './inspector';
 import {RuntimeControls, useRuntime} from './runtime';
 import {ComponentsPanel} from './components';
+import {useLive} from './live';
 
 const settingsKey = 'locatorSettings';
-type PageIntent = 'scan' | 'inspect';
+type PageIntent = 'scan' | 'inspect' | 'live';
 type SiteAccess = {site: string; intent: PageIntent; tab: number};
 
 function App() {
@@ -24,6 +25,30 @@ function App() {
   const [pick, setPick] = useState<{id: string; duplicate: boolean}>();
   const [file, setFile] = useState('');
   const runtime = useRuntime(model, setModel, tab, settings?.playwrightTestAttribute);
+  const live = useLive(model, setModel, runtime.invalidate);
+  const [autoValidate, setAutoValidate] = useState(false);
+  const latestValidation = useRef({model, validate: runtime.validate, busy: runtime.busy});
+  latestValidation.current = {model, validate: runtime.validate, busy: runtime.busy};
+  const lastAutomatic = useRef(0);
+  useEffect(() => {
+    const update = live.update;
+    if (!autoValidate || !runtime.status?.connected || live.phase !== 'live' || !update || update.full) return;
+    const changed = new Set(update.upserts.map(row => row.referenceId));
+    if (!changed.size) return;
+    const timer = window.setTimeout(() => {
+      const current = latestValidation.current;
+      if (current.busy || current.model?.documentKey !== update.context.documentKey) return;
+      const jobs = current.model.elements.flatMap(element => {
+        if (element.stale || !element.selected || !changed.has(element.referenceId)) return [];
+        const candidate = selectedCandidate(element);
+        return candidate ? [{element, candidates: [candidate]}] : [];
+      }).slice(0, 5);
+      if (!jobs.length) return;
+      lastAutomatic.current = Date.now();
+      void current.validate(jobs, 'none');
+    }, Math.max(450, lastAutomatic.current + 2000 - Date.now()));
+    return () => clearTimeout(timer);
+  }, [autoValidate, live.phase, live.update, runtime.status?.connected]);
   const selectedRow = useRef<HTMLElement>(null);
   const inspector = useInspector(model, (incoming, sourceTab) => {
     const id = incoming.elements[0]?.id;
@@ -66,6 +91,7 @@ function App() {
   async function saveSettings(next: LocatorSettings) {
     await chrome.storage.local.set({[settingsKey]: next});
     runtime.invalidate();
+    live.stop();
     setSettings(next);
   }
 
@@ -123,6 +149,13 @@ function App() {
       }
 
       const documentId = injected[0]?.documentId;
+      if (live.tab !== undefined && live.tab !== active.id) live.stop();
+      if (intent === 'live') {
+        if (tab !== null && tab !== active.id) setModel(null);
+        setTab(active.id);
+        live.start(active.id, settings, documentId);
+        return;
+      }
       if (intent === 'inspect') {
         const [current] = await chrome.tabs.query({active: true, currentWindow: true});
         if (current?.id !== active.id || current.url !== active.url) throw Error('The active page changed. Start inspection again.');
@@ -204,6 +237,36 @@ function App() {
     <button disabled={!settings || busy || inspector.state === 'active' || inspector.state === 'starting'}
       onClick={() => void openPage('scan')}>Scan active page</button>
     <InspectorControls inspector={inspector} ready={!!settings && !busy} start={() => void openPage('inspect')}/>
+    <section aria-label="Live discovery">
+      {live.phase === 'off' || live.phase === 'disconnected'
+        ? <button disabled={!settings || busy} onClick={() => void openPage('live')}>Enable live discovery</button>
+        : <div className="actions">
+          <button onClick={() => live.send(live.phase === 'paused' ? 'resume' : 'pause')}>
+            {live.phase === 'paused' ? 'Resume live discovery' : 'Pause live discovery'}
+          </button>
+          <button disabled={live.phase !== 'live'} onClick={() => live.send('sync')}>Full rescan</button>
+          <button disabled={live.phase !== 'live'} onClick={() => live.send('refresh')}>Refresh selected elements</button>
+          <button onClick={() => live.stop()}>Disable live discovery</button>
+        </div>}
+      {live.phase !== 'off' && <p role="status">
+        Live discovery {live.phase}{live.update && ` · ${live.update.context.route} · ${live.update.ready}`}
+      </p>}
+      {live.phase !== 'off' && runtime.status?.connected && <label>
+        <input type="checkbox" checked={autoValidate} onChange={event => setAutoValidate(event.target.checked)}/>
+        Automatically validate changed selected elements
+      </label>}
+      {live.update && <details>
+        <summary>Live discovery details</summary>
+        <p>{live.update.metrics.records} mutation records across {live.update.metrics.roots} roots.
+          {' '}{live.update.metrics.durationMs} ms. {live.update.metrics.fullScans} full scans.</p>
+        {live.update.collections.map(collection => <p key={collection.id}>
+          {model?.components?.find(definition => definition.id === collection.id)?.title ?? collection.id}
+          {' · '}{collection.rendered} rendered{collection.total && ` of ${collection.total}`}
+          {collection.virtual && ' · Virtualized'}{collection.reordered && ' · Reordered'}
+          {collection.duplicateKeys && ' · Duplicate keys'}
+        </p>)}
+      </details>}
+    </section>
     {siteAccess && <button onClick={() => void grantSiteAccess(siteAccess)}>Allow access to this site</button>}
     {error && <p className="error">{error}</p>}
     {pick && model?.elements.some(element => element.id === pick.id) &&
@@ -211,6 +274,7 @@ function App() {
     {model && <>
       <small>{model.url}</small>
       {settings && tab !== null && <ComponentsPanel model={model} settings={settings} setModel={setModel}
+        liveSuggestions={live.update?.proposals}
         request={(type, value) => chrome.tabs.sendMessage(tab, {type, documentKey: model.documentKey, ...value}, {frameId: 0})}
         highlight={element => void highlight(element)}
         versionWarning={runtime.status?.connected && !runtime.status.strategies?.includes('chain')}
@@ -219,6 +283,12 @@ function App() {
       <label>Python class
         <input type="text" value={model.className} onChange={event => setModel({...model, className: event.target.value})}/>
       </label>
+      {model.application && <label>Application state label
+        <input maxLength={120} value={model.application.stateLabel ?? ''} onChange={event => {
+          const stateLabel = event.target.value;
+          setModel(current => current && {...current, application: {...current.application!, stateLabel}});
+        }}/>
+      </label>}
       <div className="actions">
         {[true, false].map(selected => <button key={String(selected)} onClick={() =>
           setModel({...model, elements: model.elements.map(element => ({...element, selected}))})
@@ -240,7 +310,9 @@ function App() {
           onChange={event => update(element.id, {name: event.target.value})}/>
         <LocatorControls element={element} onChoice={choice => update(element.id, {choice})}
           onValidate={runtime.status?.connected && !runtime.busy ? candidates => void runtime.validate([{element, candidates}]) : undefined}/>
-        {element.stale && <small className="error">Detached element. Inspect its replacement to add it.</small>}
+        {element.stale && <small className="error">{element.availability === 'unavailable'
+          ? 'Unavailable in the current application state. Review any replacement before using it.'
+          : 'Detached element. Inspect its replacement to add it.'}</small>}
         <div className="actions">
           <button disabled={element.stale} onClick={() => void highlight(element)}>Highlight</button>
           {inspector.state === 'active' && <button disabled={element.stale}

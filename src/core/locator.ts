@@ -29,6 +29,7 @@ export interface Candidate {
   warnings: string[];
   validation: Validation;
   runtime?: RuntimeEvidence;
+  priorCount?: number;
 }
 
 export interface LocatorSettings {

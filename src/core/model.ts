@@ -15,6 +15,9 @@ export interface ElementModel {
   selected: boolean;
   choice: string | null;
   stale?: boolean;
+  availability?: 'available' | 'unavailable';
+  observedRoute?: string;
+  scopeKey?: string;
 }
 
 export interface PageModel {
@@ -24,6 +27,7 @@ export interface PageModel {
   documentKey?: string;
   components?: ComponentDefinition[];
   schemaVersion?: number;
+  application?: {route: string; stateLabel?: string};
 }
 
 export function mergePage(current: PageModel | null, incoming: PageModel): PageModel {
@@ -58,7 +62,21 @@ export function serializePage(model: PageModel): string {
     ...definition, runtime: definition.runtime?.map(report => !currentEvidence(report.evidence)
       ? {...report, evidence: {...report.evidence, freshness: 'historical'}} : report),
   }));
-  return JSON.stringify({...model, ...(components?.length ? {schemaVersion: modelSchemaVersion, components} : {}), elements}, null, 2);
+  const exportModel = {...model, ...(components?.length ? {schemaVersion: modelSchemaVersion, components} : {}), elements};
+  if (!model.application) return JSON.stringify(exportModel, null, 2);
+
+  // Live exports are portable model data. Observation references belong to the source document.
+  const sessionFields = new Set(['referenceId', 'documentKey', 'scopeKey', 'requestId', 'browserId',
+    'applicationRevision', 'parentReference', 'childReferences']);
+  return JSON.stringify(exportModel, (key, value) => {
+    if (sessionFields.has(key)) return undefined;
+    if (key === 'observations' && Array.isArray(value)) {
+      return value.filter(observation => !Object.hasOwn(observation, 'parentReference'));
+    }
+    if (key === 'runtime' && value && !Array.isArray(value)) return {...value, freshness: 'historical'};
+    if (key === 'evidence' && value) return {...value, freshness: 'historical'};
+    return value;
+  }, 2);
 }
 
 export function archiveValidation(model: PageModel | null): PageModel | null {

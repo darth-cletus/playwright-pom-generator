@@ -126,8 +126,9 @@ function render(model: PageModel, policy: RuntimePolicy) {
   validateComponentGraph(definitions, className);
   const unique = names(['page', 'navigate', 'PATH']);
   const rows = model.elements.filter(element => element.selected).map(element => {
-    if (element.stale) throw Error(`Remove or deselect the detached element ${element.name}`);
     const candidate = selectedCandidate(element);
+    const lazyUnavailable = policy === 'browser' && element.availability === 'unavailable' && stableTestId(candidate);
+    if (element.stale && !lazyUnavailable) throw Error(`Review the detached or unavailable element ${element.name}, or deselect it.`);
     const evidence = currentEvidence(candidate?.runtime);
     if (runtimeRejects(evidence)) {
       throw Error(`Playwright found ${evidence?.status} for ${element.name}. Choose another locator or validate again.`);
@@ -213,3 +214,4 @@ export function generatePackage(model: PageModel, policy: RuntimePolicy = 'brows
     ['from playwright.sync_api import Page', ...imports].join('\n') + note + '\n\n\n' + page + '\n';
   return files;
 }
+import {stableTestId} from './lifecycle';
