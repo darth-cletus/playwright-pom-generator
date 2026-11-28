@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0 (unreleased)
+
+- Added scoped discovery, selection and highlighting for same-origin frames and open shadow roots.
+- Added optional, per-site access for authorized cross-origin iframe scans and inspection.
+- Added lazy frame locator generation, scoped component members, portable schema-v3 exports, and frame-aware companion validation.
+
 ## v0.6.0 (unreleased)
 
 - Added opt-in live discovery for SPA navigation and DOM changes, with pause, resume, and full rescan.
