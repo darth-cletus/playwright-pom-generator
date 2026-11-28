@@ -1,4 +1,5 @@
 import type {Locator} from './locator';
+import type {ApplicationRevision} from './lifecycle';
 
 export const protocolVersion = 1;
 export const evidenceLifetime = 30_000;
@@ -13,6 +14,7 @@ export interface Correlation {
   nonce: string;
   target: boolean;
   root?: boolean;
+  context?: ApplicationRevision;
 }
 
 export interface RuntimeResult {
@@ -32,6 +34,7 @@ export interface RuntimeResult {
 }
 
 export interface RuntimeEvidence extends RuntimeResult {
+  applicationRevision?: ApplicationRevision;
   requestId: string;
   browserId: string;
   documentKey: string;

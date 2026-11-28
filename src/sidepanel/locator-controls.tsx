@@ -72,6 +72,7 @@ export function LocatorControls({element, onChoice, onValidate}: {
       <small><code>{pythonLocator(active.locator)}</code></small>
       <small>{active.locator.strategy} · {active.score}/100 · {validationStatuses[active.validation.status]}
         {' · '}{active.validation.count ?? 'Unknown'} matches · {validationMethods[active.validation.method]}</small>
+      {active.priorCount !== undefined && <small>Previously matched {active.priorCount}.</small>}
       {active.runtime && <div>
         <small>Playwright runtime · {currentEvidence(active.runtime) ? 'Current' : 'Historical'} · {active.runtime.status}
           {' · '}{active.runtime.count ?? 'Unknown'} matches · identity {active.runtime.identity}</small>

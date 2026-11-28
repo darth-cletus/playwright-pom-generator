@@ -73,3 +73,14 @@ On Windows, `py` and `npx.cmd` can substitute for `python` and `npx`. Set `POM_P
 - [Acceptance checklist](docs/acceptance-criteria.md)
 - [Roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
+## Live discovery
+
+Open the extension on the intended tab and select **Enable live discovery**. The panel displays the current path and observed state. Newly found controls are unselected. Selected controls keep their names, actions, and manual locator choices when the DOM changes. A missing control remains in the model with an availability message.
+
+Use **Pause live discovery** while editing, **Resume live discovery** to reconcile the current page, or **Full rescan** if changes extend beyond the affected subtree. **Refresh selected elements** refreshes browser-side locator checks. With the optional companion paired, **Validate current locator** and **Validate selected elements** obtain fresh Playwright evidence.
+
+When the companion is already connected, you can enable automatic validation for changed selected elements. The option starts disabled. Each automatic batch checks up to five locators without running actionability trials.
+
+Open **Live discovery details** to inspect batch timing and rendered collection membership. A total is shown when the page supplies a usable `aria-rowcount`. Add an application state label before exporting a page model. Live JSON exports carry the state label, route and availability without the document's transient references. The Python companion remains compatible with protocol v1.
+
+Use [the dynamic fixture](fixtures/dynamic.html) with the local fixture server for development. See the [lifecycle design](docs/decisions/0003-live-application-lifecycle.md) and [POM-006 verification](docs/pom-006-verification.md).

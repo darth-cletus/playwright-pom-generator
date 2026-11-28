@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Dynamic plan application</title>
+<main id="plans">
+  <h1>Specialty plans</h1>
+  <section id="catalog">
+    <button data-testid="dental">Dental plans</button>
+    <button id="weak-plan">Vision plans</button>
+    <span id="plan-label">Compare plans</span>
+    <button aria-labelledby="plan-label" data-testid="compare"></button>
+  </section>
+</main>
+<div id="portal"></div>
+<output id="choice">None</output>
+<dialog id="details"><button data-testid="close-details">Close details</button></dialog>
+<table aria-rowcount="250"><tbody id="customers"></tbody></table>
+<script>
+  const catalog = document.querySelector('#catalog');
+  const customers = document.querySelector('#customers');
+  catalog.addEventListener('click', event => {
+    if (event.target.matches('[data-testid=dental]')) document.querySelector('#choice').textContent = 'Dental selected';
+  });
+  function renderCustomers(offset) {
+    if (!customers.rows.length) {
+      for (let index = 0; index < 4; index++) {
+        const row = customers.insertRow();
+        row.insertCell().append(document.createElement('button'));
+      }
+    }
+    for (const [index, row] of [...customers.rows].entries()) {
+      const key = offset + index;
+      row.dataset.rowKey = String(key);
+      row.setAttribute('aria-rowindex', String(key + 1));
+      row.querySelector('button').textContent = 'Customer ' + key;
+    }
+  }
+  renderCustomers(0);
+  window.dynamicFixture = {
+    replace() {
+      const dental = catalog.querySelector('[data-testid=dental]');
+      dental.replaceWith(dental.cloneNode(true));
+      catalog.querySelector('#weak-plan')?.remove();
+    },
+    delayed() {
+      setTimeout(() => {
+        const button = document.createElement('button');
+        button.textContent = 'Request quote';
+        document.querySelector('#portal').append(button);
+      }, 75);
+    },
+    recycle() { renderCustomers(20); },
+    navigate() { history.pushState({}, '', '/dynamic/quote'); },
+    replaceRoute() { history.replaceState({}, '', '/dynamic/confirm'); },
+    sameRoute() { history.pushState({}, '', location.pathname); },
+    showDialog() { document.querySelector('#details').showModal(); },
+    hideDialog() { document.querySelector('#details').close(); },
+    rename() { document.querySelector('#plan-label').textContent = 'Compare specialty plans'; },
+    duplicate() {
+      const link = document.createElement('button');
+      link.dataset.testid = 'compare';
+      link.textContent = 'Different comparison';
+      catalog.append(link);
+    },
+  };
+</script>
+</html>

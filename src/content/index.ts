@@ -5,13 +5,22 @@ import {Highlights} from './highlight';
 import {Inspector} from './inspector';
 import {RuntimeCorrelation} from './runtime-correlation';
 import {describeComponent, discoverComponents, relativeComponentRoot} from './components';
+import {lifecyclePort, lifecycleVersion, type LiveCommand} from '../core/lifecycle';
+import {ApplicationLifecycle} from './lifecycle';
+import {LiveDiscovery} from './live-discovery';
 
 function install() {
   const collection = new ElementCollection();
   const highlights = new Highlights();
-  const runtime = new RuntimeCorrelation(collection);
-  window.addEventListener('pagehide', () => runtime.close());
+  const lifecycle = new ApplicationLifecycle(collection.documentKey);
+  const runtime = new RuntimeCorrelation(collection, lifecycle);
+  window.addEventListener('pagehide', event => {
+    runtime.close();
+    if (!event.persisted) lifecycle.close();
+  });
   let active: {port: chrome.runtime.Port; inspector: Inspector} | undefined;
+  lifecycle.onNavigation(() => active?.inspector.stop('The application navigated. Start inspection again.'));
+  let live: {port: chrome.runtime.Port; discovery: LiveDiscovery} | undefined;
   function references(values: unknown): Element[] | undefined {
     if (!Array.isArray(values) || !values.length || values.length > 30 ||
       !values.every((value: unknown) => typeof value === 'string')) return;
@@ -69,7 +78,39 @@ function install() {
   });
 
   chrome.runtime.onConnect.addListener(port => {
-    if (port.name !== inspectorPort || (port.sender?.id && port.sender.id !== chrome.runtime.id)) return;
+    if (port.sender?.id && port.sender.id !== chrome.runtime.id) return;
+    if (port.name === lifecyclePort) {
+      let session: string | undefined;
+      port.onMessage.addListener((message: LiveCommand) => {
+        if (message?.version !== lifecycleVersion || typeof message.session !== 'string' ||
+          !/^[a-f0-9-]{36}$/i.test(message.session)) return;
+        if (message.type === 'start' && !session) {
+          const settings = readSettings(message.settings);
+          if (!settings) return;
+          live?.discovery.close();
+          live?.port.disconnect();
+          session = message.session;
+          const discovery = new LiveDiscovery(lifecycle, collection, settings, session, update => {
+            try {port.postMessage(update);} catch {discovery.close();}
+          });
+          live = {port, discovery};
+          discovery.sync();
+        } else if (message.session === session && live?.port === port) {
+          if (message.type === 'track') live.discovery.track(message.ids, message.collections);
+          if (message.type === 'pause') live.discovery.pause();
+          if (message.type === 'resume') live.discovery.resume();
+          if (message.type === 'sync') live.discovery.sync();
+          if (message.type === 'refresh') live.discovery.refresh();
+        }
+      });
+      port.onDisconnect.addListener(() => {
+        if (live?.port !== port) return;
+        live.discovery.close();
+        live = undefined;
+      });
+      return;
+    }
+    if (port.name !== inspectorPort) return;
     if (active) {
       active.inspector.stop('Inspection moved to another panel.');
       active.port.disconnect();

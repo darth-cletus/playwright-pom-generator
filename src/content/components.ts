@@ -174,14 +174,15 @@ export function describeComponent(roots: Element[], collection: ElementCollectio
 }
 
 export function discoverComponents(collection: ElementCollection, settings: LocatorSettings,
-  measure?: (counts: {boundaries: number; candidateRoots: number; comparisons: number; groups: number}) => void): ComponentDefinition[] {
+  measure?: (counts: {boundaries: number; candidateRoots: number; comparisons: number; groups: number}) => void,
+  scope: Document | Element = document): ComponentDefinition[] {
   const parents = new WeakMap<Element, Map<string, {roots: Element[]; signature: string[]; quality: number}[]>>();
   const all: {roots: Element[]; signature: string[]; quality: number}[] = [];
   const cache = new WeakMap<Element, Map<string, Element>>();
   let examined = 0;
   let candidateRoots = 0;
   let comparisons = 0;
-  for (const root of document.querySelectorAll(boundaries)) {
+  for (const root of scope.querySelectorAll(boundaries)) {
     if (examined >= boundaryLimit) break;
     examined++;
     const parent = root.parentElement;

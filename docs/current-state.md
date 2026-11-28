@@ -1,6 +1,6 @@
 # Current state
 
-POM-005 targets v0.5.0. It is based on POM-004, whose hosted checks passed. Installed Chrome and Edge release acceptance remains pending.
+POM-006 targets v0.6.0 and builds on POM-005 and the committed DEF-001 startup guard. Live discovery streams page changes into the side panel, preserves edits across eligible replacements, and attaches application revisions to Playwright evidence. The Python companion remains on protocol v1. See [POM-006 verification](pom-006-verification.md) for local evidence and outstanding acceptance work.
 
 - The side panel still scans pages, ranks structured candidates, highlights controls, and exports Python and JSON. The inspector adds semantic and exact picks, hover feedback, hierarchical navigation, and an integrated collection.
 - Scanned and inspected elements share locator candidates and a serializable model. Names, selection, ordering, and manual choices survive updates to the same live node. Detached nodes surface as stale.
@@ -9,6 +9,6 @@ POM-005 targets v0.5.0. It is based on POM-004, whose hosted checks passed. Inst
 
 POM-004 adds optional Python Playwright protocol v1. The companion authenticates requests on loopback, attaches to a dedicated Chromium profile, and correlates the inspected document and target using temporary markers. The browser-only workflow remains available. Local and hosted automation passed 31 unit, 20 Chromium, and 17 Python tests. Coverage uses two same-URL tabs and a real unpacked extension. The installed Chrome and Edge workflow on an authorized application remains a manual acceptance item. [Hosted run](https://github.com/darth-cletus/playwright-pom-generator/actions/runs/46077816340)
 
-POM-005 adds explicit reusable definitions, heuristic discovery, sampled scoped validation, nested relationships, and lazy Python package generation. The unpacked Chromium suite exercises three repeated cards, optional content, nested status components, and live scoped Playwright evidence. A detector benchmark covers 3, 20, and 100 cards and a 120-row table. JSON component models use schema v2 and the companion uses protocol v1. The next milestone is POM-006 for SPA and dynamic collection behavior.
+POM-005 adds explicit reusable definitions, heuristic discovery, sampled scoped validation, nested relationships, and lazy Python package generation. The unpacked Chromium suite exercises three repeated cards, optional content, nested status components, and live scoped Playwright evidence. A detector benchmark covers 3, 20, and 100 cards and a 120-row table. JSON component models use schema v2 and the companion uses protocol v1.
 
 See [architecture](architecture.md) for constraints and [acceptance](acceptance-criteria.md) for verification.
