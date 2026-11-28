@@ -12,11 +12,15 @@
   </section>
 </main>
 <div id="portal"></div>
+<output id="choice">None</output>
 <dialog id="details"><button data-testid="close-details">Close details</button></dialog>
 <table aria-rowcount="250"><tbody id="customers"></tbody></table>
 <script>
   const catalog = document.querySelector('#catalog');
   const customers = document.querySelector('#customers');
+  catalog.addEventListener('click', event => {
+    if (event.target.matches('[data-testid=dental]')) document.querySelector('#choice').textContent = 'Dental selected';
+  });
   function renderCustomers(offset) {
     if (!customers.rows.length) {
       for (let index = 0; index < 4; index++) {

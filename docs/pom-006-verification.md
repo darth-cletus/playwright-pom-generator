@@ -32,13 +32,13 @@ Extension v0.6.0 adds opt-in discovery on dynamic Chromium pages. The implementa
 
 The baseline passed 39 TypeScript tests, 23 Chromium tests and 17 Python companion tests. POM-006 adds three TypeScript and four Chromium tests. Production bundling and TypeScript type checking passed. Python companion tests and the configured Ruff checks passed. Existing Chromium cases execute generated Python against real fixtures and exercise production side-panel startup and the companion. The hosted workflow already runs these suites and required no source changes.
 
-Use `fixtures/dynamic.html` to inspect plan controls. The browser suite selects Dental plans, edits its Python name, and verifies that replacement retains both. It pauses while a portal inserts a quote action, then resumes and observes it. It exercises history push, replace, back and forward, query and hash changes, and a full reload. A second test changes an external label, recycles customer rows in a table advertising 250 records, opens and closes a dialog, and introduces an ambiguous test ID. The live component test reorders, duplicates and removes a plan card and examines rendered membership and unavailable instances. Existing companion coverage pairs the extension and rejects stale Playwright marker leases.
+Use `fixtures/dynamic.html` to inspect plan controls. The browser suite selects Dental plans, edits its Python name, and verifies that replacement retains both. It executes the exported Python against a new instance of the fixture after cloning the original button. It pauses while a portal inserts a quote action, then resumes and observes it. It exercises history push, replace, back and forward, query and hash changes, and a full reload. A second test changes an external label, recycles customer rows in a table advertising 250 records, opens and closes a dialog, and introduces an ambiguous test ID. The live component test reorders, duplicates and removes a plan card and examines rendered membership and unavailable instances. Existing companion coverage pairs the extension and rejects stale Playwright marker leases.
 
 ## Performance
 
-The browser fixture surrounds a small number of interactive controls with inert nodes. Windows Chromium panel settlement after inserting one button compared with the next manual full rescan was 128/74 ms for 1,000 nodes, 194/134 ms for 10,000, and 331/318 ms for 50,000. The comparison checks that the full rescan keeps the same number of model rows. The incremental timing includes debounce. The shared candidate builder can still construct global semantic indexes, so these cases do not demonstrate a latency improvement. A separate existing component benchmark detected one group across 100 cards in 12.5 ms and a 120-row table in 17.2 ms in the same run. Timing varies by runner.
+The browser fixture surrounds a small number of interactive controls with inert nodes. Windows Chromium panel settlement after inserting one button compared with the next manual full rescan was 124/73 ms for 1,000 nodes, 135/68 ms for 10,000, and 284/195 ms for 50,000. Candidate option lists match the following full rescan. A 1,000-mutation burst on the 50,000-node page settled in 261 ms, with diagnostics recording the 256-record budget and one overflow-triggered rescan. Incremental timings include debounce. The shared candidate builder can still construct global semantic indexes. These cases showed no settlement latency improvement. A separate existing component benchmark detected one group across 100 cards in 12.5 ms and a 120-row table in 17.2 ms. Timing varies by runner.
 
-The discovery budget is 48 roots, 256 records, and 1,500 discovered plus 200 tracked rows. The quiet period is 80 ms with a 240 ms scheduling deadline. The panel reports actual batch duration and full-scan count. The dense interactive workload, 100 distinct groups, 1,000-mutation workload, heap growth and runtime request-rate measurements remain open.
+The discovery budget is 48 roots, 256 records, and 1,500 discovered plus 200 tracked rows. The quiet period is 80 ms with a 240 ms scheduling deadline. The panel reports actual batch duration and full-scan count. Measurement of dense interactive pages, 100 distinct groups, heap growth and runtime request rates remains open.
 
 ## Security and privacy
 
@@ -88,7 +88,7 @@ Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005
 | AC-006.20 | Affected locator candidates are refreshed or invalidated. | PASS | Selected locator browser coverage |
 | AC-006.21 | External accessible-name dependencies are handled. | PASS | Direct aria-labelledby browser test |
 | AC-006.22 | Newly introduced locator ambiguity is detected or conservatively invalidated. | FAIL | Global changes refresh selected rows only. Untracked ambiguous candidates can persist until rescan. |
-| AC-006.23 | Incremental discovery converges to equivalent full-scan results in representative fixtures. | NOT VERIFIED | Benchmark compares row counts. Locator-set equivalence remains open. |
+| AC-006.23 | Incremental discovery converges to equivalent full-scan results in representative fixtures. | PASS | Browser benchmark compares the candidate option lists for incremental and full discovery. |
 | AC-006.24 | A reliable full-rescan fallback is available. | PASS | Full-rescan benchmark and resume test |
 | AC-006.25 | Live DOM identity is distinguished from persistent model identity. | PASS | Persistent model key and weak DOM reference |
 | AC-006.26 | Detached selected elements are handled safely. | PASS | Unavailable selected customer test |
@@ -143,14 +143,14 @@ Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005
 | AC-006.75 | Existing flat page object generation remains functional. | PASS | Python generation regression suite |
 | AC-006.76 | Existing reusable component generation remains functional. | PASS | Components regression and package execution |
 | AC-006.77 | Generated locators continue to use lazy Playwright resolution. | PASS | Generator emits lazy Playwright locators |
-| AC-006.78 | Generated Python executes successfully after representative application rerenders. | NOT VERIFIED | Existing generated Python executes. Generated live model after a dynamic rerender remains unverified. |
+| AC-006.78 | Generated Python executes successfully after representative application rerenders. | PASS | Exported Python executes against a replacement control with real Playwright. |
 | AC-006.79 | Temporarily unavailable model elements are not silently excluded from generated code. | PASS | Unavailable narrow lazy export path or explicit review error |
 | AC-006.80 | JSON exports preserve relevant persistent lifecycle metadata. | PASS | Live serialization unit test |
 | AC-006.81 | Transient DOM references and pending runtime operations are not serialized. | PASS | Live serialization strips document and reference IDs |
 | AC-006.82 | Required model schema migrations are documented and tested. | PASS | Additive schema coverage and ADR |
 | AC-006.83 | Mutation queues and discovery workloads are bounded. | PASS | Observer limits and row budgets |
 | AC-006.84 | Incremental discovery performance is measured. | PASS | 1k, 10k and 50k benchmark |
-| AC-006.85 | Incremental discovery is compared with equivalent full-scan behavior. | NOT VERIFIED | Compared panel settlement and row counts. Full candidate equivalence remains unverified. |
+| AC-006.85 | Incremental discovery is compared with equivalent full-scan behavior. | PASS | Browser benchmark compares candidate options and records settlement for each approach. |
 | AC-006.86 | Repeated lifecycle activation does not accumulate duplicate observers or listeners. | NOT VERIFIED | One observer per active document. Long-running live activation resource measurements remain open. |
 | AC-006.87 | Detached DOM references are not retained unnecessarily. | PASS | Weak references and pruning |
 | AC-006.88 | Discovery and validation cancellation release temporary resources. | PASS | Marker release and port-disconnect cleanup |
@@ -168,7 +168,7 @@ Implementation branch `feature/POM-006-dynamic-applications` is based on POM-005
 | AC-006.100 | Existing TypeScript tests continue to pass. | PASS | 42 TypeScript tests pass |
 | AC-006.101 | Existing Python tests continue to pass where applicable. | PASS | 17 Python companion tests pass |
 | AC-006.102 | Existing POM-002 through POM-005 capabilities remain operational. | PASS | Existing TypeScript, Chromium and Python suites |
-| AC-006.103 | DEF-001 regression tests continue to pass. | PASS | Existing startup guard unit regression and extension startup smoke tests |
+| AC-006.103 | DEF-001 regression tests continue to pass. | PASS | Startup guard and extension startup browser tests |
 | AC-006.104 | The production browser extension builds successfully. | PASS | Production build passes |
 | AC-006.105 | GitHub Actions workflows remain functional. | NOT VERIFIED | Hosted workflow verification pending. |
 | AC-006.106 | Documentation accurately reflects the implementation and limitations. | PASS | Docs and decision record include limits |

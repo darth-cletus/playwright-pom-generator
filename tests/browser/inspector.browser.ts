@@ -107,6 +107,25 @@ it('preserves live edits across replacement, navigation and a pause', async () =
   expect(await dental.getByRole('textbox', {name: 'Python element name'}).inputValue()).toBe('dental_action');
   expect(await dental.getByRole('checkbox').isChecked()).toBe(true);
   expect(await dental.getByRole('button', {name: 'Highlight'}).isEnabled()).toBe(true);
+  const generated = await download('Export Python');
+  const execution = spawnSync(python, ['-c', [
+    'import sys',
+    'from pathlib import Path',
+    'from playwright.sync_api import sync_playwright',
+    'namespace = {}',
+    'exec(sys.stdin.buffer.read().decode("utf-8"), namespace)',
+    'with sync_playwright() as playwright:',
+    '    browser = playwright.chromium.launch()',
+    '    page = browser.new_page()',
+    '    page.set_content(Path(sys.argv[1]).read_text(encoding="utf-8"))',
+    '    plans = namespace["GeneratedPage"](page)',
+    '    page.evaluate("dynamicFixture.replace()")',
+    '    plans.dental_action.click()',
+    '    assert page.locator("#choice").text_content() == "Dental selected"',
+    '    browser.close()',
+  ].join('\n'), fileURLToPath(new URL('../../fixtures/dynamic.html', import.meta.url))],
+    {input: generated, encoding: 'utf8', timeout: 10_000});
+  expect(execution.status, execution.error?.message ?? execution.stderr).toBe(0);
   await clickPanel('Pause live discovery');
   await app.evaluate(() => (window as any).dynamicFixture.delayed());
   await app.getByRole('button', {name: 'Request quote'}).waitFor();
@@ -186,13 +205,28 @@ it('compares incremental and full discovery on dynamic workloads', async () => {
     }, name);
     await expect.poll(() => panel.getByRole('checkbox', {name, exact: true}).count(), {timeout: 10_000}).toBe(1);
     const incrementalMs = Math.round(performance.now() - start);
-    const modelRows = await field().count();
+    const selectors = () => panel.locator('article select').evaluateAll(elements =>
+      elements.map(element => Array.from((element as HTMLSelectElement).options, option => option.text)));
+    const incremental = await selectors();
     const fullStart = performance.now();
     await clickPanel('Full rescan');
     await expect.poll(() => live.getByText(/2 full scans/).count(), {timeout: 10_000}).toBe(1);
     const fullMs = Math.round(performance.now() - fullStart);
-    expect(await field().count()).toBe(modelRows);
+    expect(await selectors()).toEqual(incremental);
     timings.push({size, incrementalMs, fullMs});
+    if (size === 50_000) {
+      const burstStarted = performance.now();
+      await app.evaluate(() => {
+        const portal = document.querySelector('#portal')!;
+        for (let n = 0; n < 1000; n++) portal.setAttribute('data-update', String(n));
+        const button = document.createElement('button');
+        button.textContent = 'After mutation burst';
+        portal.append(button);
+      });
+      await expect.poll(() => panel.getByRole('checkbox', {name: 'After mutation burst'}).count()).toBe(1);
+      await expect.poll(() => live.getByText(/256 mutation records.*3 full scans/).count()).toBe(1);
+      timings.push({mutationRecords: 1000, settlementMs: Math.round(performance.now() - burstStarted)});
+    }
     await clickPanel('Disable live discovery');
   }
   console.info('Dynamic DOM benchmark (panel settlement)', JSON.stringify(timings));
@@ -218,6 +252,11 @@ it('updates rendered component membership, reordering and duplicate keys', async
     dental.after(dental.cloneNode(true));
   });
   await expect.poll(() => live.getByText(/4 rendered.*Duplicate keys/).count()).toBe(1);
+  if (process.env.POM_INSPECTOR_SCREENSHOTS) {
+    const output = process.env.POM_INSPECTOR_SCREENSHOTS;
+    await mkdir(output, {recursive: true});
+    await panel.screenshot({path: join(output, 'live-component-collection.png')});
+  }
   await app.getByTestId('vision-card').evaluate(node => node.remove());
   await expect.poll(() => live.getByText(/3 rendered/).count()).toBe(1);
   await panel.getByText(/Article component.*definition/).evaluate((element: HTMLElement) => element.click());
