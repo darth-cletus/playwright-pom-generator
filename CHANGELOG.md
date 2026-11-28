@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.0 (unreleased)
+
+- Added opt-in live discovery for SPA navigation and DOM changes, with pause, resume, and full rescan.
+- Preserved editable model data when controls disappear or a stable replacement appears.
+- Added rendered collection diagnostics and revision-bound Playwright validation evidence.
+- Added dynamic fixture coverage and an incremental/full discovery benchmark.
+
 ## v0.5.0 (unreleased)
 
 - Added reviewed repeated-component discovery, manual boundaries, scoped member editing, reusable instances and collections, and nested component relationships.

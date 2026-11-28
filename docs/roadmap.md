@@ -15,3 +15,6 @@
 | POM-012 | Automated release packaging. |
 
 Prioritize broadening the semantic comparison fixtures as differences emerge between the browser estimates and actual Playwright matching.
+## POM-006 dynamic application support
+
+The v0.6.0 extension adds live observation, SPA tracking, conservative replacement, dynamic collection diagnostics, and revision-bound Playwright evidence. Review remaining coverage and manual acceptance in the [POM-006 verification report](pom-006-verification.md).
